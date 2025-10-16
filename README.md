@@ -8,6 +8,8 @@ A VSCode extension for creating and editing SVG files with a grid-based drawing 
 - **Line Drawing**: Create straight lines by clicking and dragging between grid points
 - **Bezier Curves**: Convert lines to smooth quadratic curves by dragging the midpoint
 - **Circular Arcs**: Hold Ctrl while dragging to create perfect circular arcs
+- **Zoom**: Mouse wheel to zoom in/out (0.1x to 10x)
+- **Pan**: Middle mouse button to pan the view
 - **Auto-save**: Changes are automatically saved to the SVG file
 - **Real-time Preview**: See the generated SVG code below the canvas
 
@@ -34,6 +36,7 @@ A VSCode extension for creating and editing SVG files with a grid-based drawing 
 2. Click and drag the green dot to create a smooth bezier curve
 3. The dot turns blue once the curve is active
 4. You can continue adjusting the curve by dragging the blue control point
+5. **Double-click the blue dot** to remove the curve and return to a straight line
 
 #### Circular Arcs
 1. After creating a line, click the green midpoint dot
@@ -42,6 +45,18 @@ A VSCode extension for creating and editing SVG files with a grid-based drawing 
 4. Drag to position where you want the arc to pass through (the center of the arc)
 5. Release to create a perfect circular arc
 6. You can toggle between arc and bezier mode by holding/releasing Ctrl while dragging
+7. **Double-click the orange dot** to remove the arc and return to a straight line
+
+### Zoom and Pan
+
+- **Zoom In/Out**: Scroll mouse wheel up/down
+  - Zoom range: 0.1x (zoomed out) to 10x (zoomed in)
+  - Zoom centers on mouse cursor position
+- **Pan View**: Click and drag with middle mouse button
+  - Move the canvas to see different areas
+  - Especially useful when zoomed in
+- **Reset View**: Double-click middle mouse button
+  - Resets zoom to 1.0x and pan to center
 
 ### Visual Indicators
 
@@ -101,9 +116,12 @@ Potential features to add:
 - Color picker for line colors
 - Multiple line thicknesses
 - Undo/redo functionality
-- Delete lines
+- Delete lines (Del key or right-click menu)
 - Move/transform lines
 - Fill shapes
-- Export to different formats
+- Export to different formats (PNG, PDF)
 - Grid size configuration
 - Multiple layers
+- Snap to angle for lines
+- Duplicate/copy-paste shapes
+- Keyboard shortcuts

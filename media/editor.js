@@ -22,6 +22,18 @@
     let saveTimeout = null;
     let isLoadingFromFile = false;
 
+    // View state for zoom and pan
+    let zoom = 1.0;
+    let panX = 0;
+    let panY = 0;
+    let isPanning = false;
+    let lastPanX = 0;
+    let lastPanY = 0;
+    let lastMiddleClickTime = 0;
+    let lastLeftClickTime = 0;
+    let lastClickedCurveIndex = null;
+    const DOUBLE_CLICK_DELAY = 300; // milliseconds
+
     // Line structure: { start: {x, y}, end: {x, y}, curveControl: {x, y} | null, isArc: boolean }
 
     function drawGrid() {
@@ -54,9 +66,20 @@
 
     function getCanvasCoordinates(event) {
         const rect = canvas.getBoundingClientRect();
+        const screenX = event.clientX - rect.left;
+        const screenY = event.clientY - rect.top;
+
+        // Transform screen coordinates to world coordinates
         return {
-            x: event.clientX - rect.left,
-            y: event.clientY - rect.top
+            x: (screenX - panX) / zoom,
+            y: (screenY - panY) / zoom
+        };
+    }
+
+    function worldToScreen(worldX, worldY) {
+        return {
+            x: worldX * zoom + panX,
+            y: worldY * zoom + panY
         };
     }
 
@@ -138,7 +161,17 @@
     }
 
     function redraw() {
+        // Save the current transform
+        ctx.save();
+
+        // Clear the entire canvas
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+
+        // Apply zoom and pan transformations
+        ctx.translate(panX, panY);
+        ctx.scale(zoom, zoom);
+
         drawGrid();
 
         lines.forEach((line, index) => {
@@ -149,6 +182,9 @@
         if (currentLine) {
             drawLine(currentLine);
         }
+
+        // Restore the transform
+        ctx.restore();
     }
 
     function isNearPoint(pos, point, threshold = 10) {
@@ -459,23 +495,78 @@
 
     // Event handlers
     canvas.addEventListener('mousedown', (e) => {
-        const pos = getCanvasCoordinates(e);
-        const handle = findCurveHandleUnderCursor(pos);
+        // Handle middle button for panning and double-click reset
+        if (e.button === 1) {
+            e.preventDefault();
 
-        if (handle) {
-            isDragging = true;
-            draggedCurveIndex = handle.lineIndex;
-            draggedCurvePoint = handle.point;
-            // Add document-level listeners to track mouse outside canvas
-            document.addEventListener('mousemove', handleMouseMove);
-            document.addEventListener('mouseup', handleMouseUp);
-        } else {
-            const snapped = snapToGrid(pos.x, pos.y);
-            currentLine = {
-                start: snapped,
-                end: snapped,
-                curveControl: null
-            };
+            const currentTime = Date.now();
+            const timeSinceLastClick = currentTime - lastMiddleClickTime;
+
+            // Check for double-click
+            if (timeSinceLastClick < DOUBLE_CLICK_DELAY) {
+                // Double-click detected - reset zoom and pan
+                zoom = 1.0;
+                panX = 0;
+                panY = 0;
+                redraw();
+                lastMiddleClickTime = 0; // Reset to prevent triple-click
+                return;
+            }
+
+            // Single click - start panning
+            lastMiddleClickTime = currentTime;
+            isPanning = true;
+            lastPanX = e.clientX;
+            lastPanY = e.clientY;
+            canvas.style.cursor = 'grabbing';
+            return;
+        }
+
+        // Handle left button for drawing
+        if (e.button === 0) {
+            const pos = getCanvasCoordinates(e);
+            const handle = findCurveHandleUnderCursor(pos);
+
+            if (handle) {
+                const currentTime = Date.now();
+                const timeSinceLastClick = currentTime - lastLeftClickTime;
+
+                // Check for double-click on a curve control point (not midpoint)
+                if (handle.point === 'control' &&
+                    timeSinceLastClick < DOUBLE_CLICK_DELAY &&
+                    lastClickedCurveIndex === handle.lineIndex) {
+                    // Double-click detected - remove curvature
+                    const line = lines[handle.lineIndex];
+                    line.curveControl = null;
+                    line.isArc = false;
+                    redraw();
+                    debouncedSave();
+                    lastLeftClickTime = 0;
+                    lastClickedCurveIndex = null;
+                    return;
+                }
+
+                // Single click - start dragging curve control
+                lastLeftClickTime = currentTime;
+                lastClickedCurveIndex = handle.lineIndex;
+                isDragging = true;
+                draggedCurveIndex = handle.lineIndex;
+                draggedCurvePoint = handle.point;
+                // Add document-level listeners to track mouse outside canvas
+                document.addEventListener('mousemove', handleMouseMove);
+                document.addEventListener('mouseup', handleMouseUp);
+            } else {
+                // Starting a new line - reset curve click tracking
+                lastLeftClickTime = 0;
+                lastClickedCurveIndex = null;
+
+                const snapped = snapToGrid(pos.x, pos.y);
+                currentLine = {
+                    start: snapped,
+                    end: snapped,
+                    curveControl: null
+                };
+            }
         }
     });
 
@@ -531,6 +622,53 @@
         if (currentLine) {
             currentLine = null;
             redraw();
+        }
+    });
+
+    // Zoom with mouse wheel
+    canvas.addEventListener('wheel', (e) => {
+        e.preventDefault();
+
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+
+        // Get world coordinates before zoom
+        const worldX = (mouseX - panX) / zoom;
+        const worldY = (mouseY - panY) / zoom;
+
+        // Update zoom
+        const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
+        const newZoom = Math.max(0.1, Math.min(10, zoom * zoomFactor));
+
+        // Adjust pan to keep mouse position fixed
+        panX = mouseX - worldX * newZoom;
+        panY = mouseY - worldY * newZoom;
+
+        zoom = newZoom;
+        redraw();
+    });
+
+    // Pan with middle mouse button (movement handled in document listener)
+    document.addEventListener('mousemove', (e) => {
+        if (isPanning) {
+            const dx = e.clientX - lastPanX;
+            const dy = e.clientY - lastPanY;
+
+            panX += dx;
+            panY += dy;
+
+            lastPanX = e.clientX;
+            lastPanY = e.clientY;
+
+            redraw();
+        }
+    });
+
+    document.addEventListener('mouseup', (e) => {
+        if (e.button === 1 && isPanning) {
+            isPanning = false;
+            canvas.style.cursor = 'crosshair';
         }
     });
 
