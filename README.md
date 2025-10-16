@@ -6,6 +6,9 @@ A VSCode extension for creating and editing SVG files with a grid-based drawing 
 
 - **32x32 Grid Canvas**: Draw on a precise grid background with snap-to-grid functionality
 - **Line Drawing**: Create straight lines by clicking and dragging between grid points
+- **Move/Copy**: Shift+drag to move lines, Ctrl+drag to copy them
+- **Delete/Edit**: Right-click context menu for delete, thickness, and color options
+- **Undo**: Ctrl+Z to undo the last action
 - **Bezier Curves**: Convert lines to smooth quadratic curves by dragging the midpoint
 - **Circular Arcs**: Hold Ctrl while dragging to create perfect circular arcs
 - **Zoom**: Mouse wheel to zoom in/out (0.1x to 10x)
@@ -29,6 +32,36 @@ A VSCode extension for creating and editing SVG files with a grid-based drawing 
 3. Release to create the line
 4. Lines snap to grid intersections automatically
 
+### Moving and Copying Lines
+
+- **Move Line**: Hold **Shift** and drag a line to move it
+  - Cursor changes to "move" icon
+  - Entire line (including curves) moves together
+  - Does not work when clicking on control dots
+- **Copy Line**: Hold **Ctrl** and drag a line to duplicate it
+  - Cursor changes to "copy" icon
+  - Creates a duplicate that you can place anywhere
+  - Does not work when clicking on control dots
+
+### Context Menu (Right-Click)
+
+- **Right-click on any line** to open context menu with options:
+  - **Delete**: Remove the line
+  - **Straighten**: Convert curved line to straight (only shown for curved lines)
+  - **Thickness**: Three buttons in a row:
+    - **[−]** Make thinner (÷⁴√2 ≈ 0.841×) - *menu stays open*
+    - **[=]** Reset to normal (1×) - *menu stays open*
+    - **[+]** Make thicker (×⁴√2 ≈ 1.189×) - *menu stays open*
+  - **Color**: 12 inline color swatches:
+    - Black, Brown, Red, Orange, Yellow, Green, Blue, Purple
+    - Light Grey, Mid Grey, Dark Grey, White
+
+### Undo
+
+- **Undo Last Action**: Press **Ctrl+Z** (or **Cmd+Z** on Mac)
+  - Undoes the last modifying action (draw, move, copy, curve, remove curve, delete, color, thickness)
+  - Only one level of undo available
+
 ### Creating Curves
 
 #### Bezier Curves (Quadratic)
@@ -37,6 +70,7 @@ A VSCode extension for creating and editing SVG files with a grid-based drawing 
 3. The dot turns blue once the curve is active
 4. You can continue adjusting the curve by dragging the blue control point
 5. **Double-click the blue dot** to remove the curve and return to a straight line
+6. **Alt+click on a bezier curve** to split it into two curves at that point
 
 #### Circular Arcs
 1. After creating a line, click the green midpoint dot
@@ -113,10 +147,9 @@ This will automatically recompile when you make changes to TypeScript files.
 
 Potential features to add:
 
-- Color picker for line colors
-- Multiple line thicknesses
-- Undo/redo functionality
-- Delete lines (Del key or right-click menu)
+- Multi-level undo/redo
+- Delete lines with Del key
+- Custom color picker (currently has 12 standard colors)
 - Move/transform lines
 - Fill shapes
 - Export to different formats (PNG, PDF)
