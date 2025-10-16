@@ -59,6 +59,10 @@
     let draggedEndpointLineIndex = null;
     let draggedEndpointType = null; // 'start' or 'end'
 
+    // Ctrl+click state for adding control points
+    let ctrlClickStartPos = null;
+    let potentialCopyLineIndex = null; // Track which line might be copied if drag continues
+
     // Line structure: { start: {x, y}, end: {x, y}, curveControl: {x, y} | null, isArc: boolean, thickness: number, color: string }
 
     function saveUndoState() {
@@ -749,21 +753,19 @@ ${pathElements}</svg>`;
                     document.addEventListener('mouseup', handleMouseUp);
                     return;
                 }
-
-                // Check for Alt+click to add/move control point on line (if not on endpoint)
-                if (!handle) {
-                    const lineIndex = findLineAtPositionForCurving(pos);
-                    if (lineIndex !== null) {
-                        saveUndoState();
-                        addControlPointToLine(lineIndex, pos);
-                        redraw();
-                        debouncedSave();
-                        return;
-                    }
-                }
             }
 
-            // Check for Shift+drag (move) or Ctrl+drag (copy) - but only if NOT on a control dot
+            // Check for Ctrl+click (for adding control points) or Ctrl+drag (for copying)
+            // Store the start position and potential line to copy - distinguish click from drag later
+            if (!handle && e.ctrlKey && !e.shiftKey && !e.altKey) {
+                ctrlClickStartPos = { ...pos };
+                potentialCopyLineIndex = findLineUnderCursor(pos);
+                // If on a line, this might become a copy drag; if not, might be adding control point
+                // Continue to mouseMove or mouseUp to determine which
+                return;
+            }
+
+            // Check for Shift+drag (move) - but only if NOT on a control dot
             if (!handle && e.shiftKey && !e.ctrlKey) {
                 const lineIndex = findLineUnderCursor(pos);
                 if (lineIndex !== null) {
@@ -773,22 +775,6 @@ ${pathElements}</svg>`;
                     moveStartPos = { ...pos };
                     originalLineState = JSON.parse(JSON.stringify(lines[lineIndex]));
                     canvas.style.cursor = 'move';
-                    return;
-                }
-            } else if (!handle && e.ctrlKey && !e.shiftKey) {
-                const lineIndex = findLineUnderCursor(pos);
-                if (lineIndex !== null) {
-                    saveUndoState();
-                    isCopying = true;
-                    movingLineIndex = lineIndex;
-                    moveStartPos = { ...pos };
-                    // Create a copy of the line
-                    const copiedLine = JSON.parse(JSON.stringify(lines[lineIndex]));
-                    lines.push(copiedLine);
-                    movingLineIndex = lines.length - 1;
-                    originalLineState = JSON.parse(JSON.stringify(copiedLine));
-                    canvas.style.cursor = 'copy';
-                    redraw();
                     return;
                 }
             }
@@ -842,6 +828,30 @@ ${pathElements}</svg>`;
 
     function handleMouseMove(e) {
         const pos = getCanvasCoordinates(e);
+
+        // Check if Ctrl+drag should start copying (need at least CELL_SIZE movement)
+        if (ctrlClickStartPos !== null && potentialCopyLineIndex !== null && !isCopying) {
+            const dx = pos.x - ctrlClickStartPos.x;
+            const dy = pos.y - ctrlClickStartPos.y;
+            const distMoved = Math.sqrt(dx * dx + dy * dy);
+
+            // Start copy operation if moved at least one grid unit
+            if (distMoved >= CELL_SIZE) {
+                saveUndoState();
+                isCopying = true;
+                movingLineIndex = potentialCopyLineIndex;
+                moveStartPos = { ...ctrlClickStartPos };
+                // Create a copy of the line
+                const copiedLine = JSON.parse(JSON.stringify(lines[potentialCopyLineIndex]));
+                lines.push(copiedLine);
+                movingLineIndex = lines.length - 1;
+                originalLineState = JSON.parse(JSON.stringify(copiedLine));
+                canvas.style.cursor = 'copy';
+                ctrlClickStartPos = null;
+                potentialCopyLineIndex = null;
+                redraw();
+            }
+        }
 
         if (isDraggingEndpoint && draggedEndpointLineIndex !== null) {
             const line = lines[draggedEndpointLineIndex];
@@ -914,6 +924,25 @@ ${pathElements}</svg>`;
             // Remove document listeners
             document.removeEventListener('mousemove', handleMouseMove);
             document.removeEventListener('mouseup', handleMouseUp);
+        } else if (ctrlClickStartPos !== null) {
+            // Check if this was a Ctrl+click (not a drag)
+            const pos = getCanvasCoordinates(e);
+            const dx = pos.x - ctrlClickStartPos.x;
+            const dy = pos.y - ctrlClickStartPos.y;
+            const distMoved = Math.sqrt(dx * dx + dy * dy);
+
+            // If mouse didn't move at least one grid unit, treat it as a click
+            if (distMoved < CELL_SIZE) {
+                const lineIndex = findLineAtPositionForCurving(ctrlClickStartPos);
+                if (lineIndex !== null) {
+                    saveUndoState();
+                    addControlPointToLine(lineIndex, ctrlClickStartPos);
+                    redraw();
+                    debouncedSave();
+                }
+            }
+            ctrlClickStartPos = null;
+            potentialCopyLineIndex = null;
         } else if (currentLine) {
             const dx = currentLine.end.x - currentLine.start.x;
             const dy = currentLine.end.y - currentLine.start.y;
