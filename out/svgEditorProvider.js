@@ -50,16 +50,25 @@ class SvgEditorProvider {
         };
         webviewPanel.webview.html = this.getHtmlForWebview(webviewPanel.webview);
         let isUpdatingFromWebview = false;
-        // Storage key for reference layer (per document)
-        const storageKey = `referenceLayer:${document.uri.toString()}`;
+        // Storage keys for reference layer, crosshair state, background color, and suppress flag (per document)
+        const referenceLayerKey = `referenceLayer:${document.uri.toString()}`;
+        const crosshairKey = `crosshair:${document.uri.toString()}`;
+        const backgroundColorKey = `backgroundColor:${document.uri.toString()}`;
+        const suppressReferenceLayerKey = `suppressReferenceLayer:${document.uri.toString()}`;
         const context = this.context;
         function updateWebview() {
-            // Load reference layer from storage
-            const referenceLayer = context.workspaceState.get(storageKey, []);
+            // Load reference layer, crosshair state, background color, and suppress flag from storage
+            const referenceLayer = context.workspaceState.get(referenceLayerKey, []);
+            const showCrosshair = context.workspaceState.get(crosshairKey, false);
+            const backgroundColor = context.workspaceState.get(backgroundColorKey, undefined);
+            const suppressReferenceLayer = context.workspaceState.get(suppressReferenceLayerKey, false);
             webviewPanel.webview.postMessage({
                 type: 'update',
                 content: document.getText(),
                 referenceLayer: referenceLayer,
+                showCrosshair: showCrosshair,
+                backgroundColor: backgroundColor,
+                suppressReferenceLayer: suppressReferenceLayer,
             });
         }
         const changeDocumentSubscription = vscode.workspace.onDidChangeTextDocument(e => {
@@ -96,11 +105,31 @@ class SvgEditorProvider {
                     return;
                 case 'saveReferenceLayer':
                     // Save reference layer to workspace state
-                    await context.workspaceState.update(storageKey, e.referenceLayer);
+                    await context.workspaceState.update(referenceLayerKey, e.referenceLayer);
                     return;
                 case 'clearReferenceLayer':
                     // Clear reference layer from workspace state
-                    await context.workspaceState.update(storageKey, []);
+                    await context.workspaceState.update(referenceLayerKey, []);
+                    return;
+                case 'saveCrosshairState':
+                    // Save crosshair state to workspace state
+                    await context.workspaceState.update(crosshairKey, e.showCrosshair);
+                    return;
+                case 'saveBackgroundColor':
+                    // Save background color to workspace state
+                    await context.workspaceState.update(backgroundColorKey, e.backgroundColor);
+                    return;
+                case 'saveSuppressReferenceLayer':
+                    // Save suppress reference layer flag to workspace state
+                    await context.workspaceState.update(suppressReferenceLayerKey, e.suppressReferenceLayer);
+                    return;
+                case 'createUntitledFromLines':
+                    // Create a new untitled document with just the drawn lines (no reference layer)
+                    const newDocument = await vscode.workspace.openTextDocument({
+                        content: e.content,
+                        language: 'xml'
+                    });
+                    await vscode.window.showTextDocument(newDocument);
                     return;
             }
         });

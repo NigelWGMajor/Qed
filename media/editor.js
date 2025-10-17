@@ -61,6 +61,9 @@
     // Reference layer visibility
     let isReferenceLayerVisible = true;
 
+    // Reference layer suppression (when user explicitly clears it, don't repopulate from file)
+    let suppressReferenceLayer = false;
+
     // Crosshair cursor lines
     let showCrosshair = false;
 
@@ -762,16 +765,20 @@ ${pathElements}</svg>`;
             // Also check for closed paths with Z command (typically filled shapes)
             const hasClosedPath = /[Zz]/.test(d);
             if ((fill && fill !== 'none') || (hasClosedPath && !stroke)) {
-                // Add to reference layer instead of parsedLines
-                referenceLayer.push({
-                    type: 'path',
-                    pathData: d,
-                    fill: fill || '#000000',
-                    stroke: stroke,
-                    strokeWidth: strokeWidth,
-                    transform: { scaleX, scaleY, offsetX, offsetY }
-                });
-                console.log('SVG Editor: Preserved filled path to reference layer with', d.match(/[MmZz]/g).length, 'subpaths');
+                // Only add to reference layer if not suppressed
+                if (!suppressReferenceLayer) {
+                    referenceLayer.push({
+                        type: 'path',
+                        pathData: d,
+                        fill: fill || '#000000',
+                        stroke: stroke,
+                        strokeWidth: strokeWidth,
+                        transform: { scaleX, scaleY, offsetX, offsetY }
+                    });
+                    console.log('SVG Editor: Preserved filled path to reference layer with', d.match(/[MmZz]/g).length, 'subpaths');
+                } else {
+                    console.log('SVG Editor: Skipped filled path (reference layer suppressed)');
+                }
                 return; // Skip line-by-line parsing for filled paths
             }
 
@@ -1482,6 +1489,11 @@ ${pathElements}</svg>`;
 
                 case 'toggle-background':
                     backgroundColor = backgroundColor === '#ffffff' ? '#202020' : '#ffffff';
+                    // Save background color to extension storage
+                    vscode.postMessage({
+                        type: 'saveBackgroundColor',
+                        backgroundColor: backgroundColor
+                    });
                     redraw();
                     break;
 
@@ -1491,17 +1503,40 @@ ${pathElements}</svg>`;
                     break;
 
                 case 'clear-reference':
-                    if (confirm('Clear the reference layer? This cannot be undone.')) {
-                        referenceLayer = [];
-                        vscode.postMessage({
-                            type: 'clearReferenceLayer'
-                        });
-                        redraw();
-                    }
+                    shouldCloseMenu = false; // Don't auto-close, we'll handle it manually
+                    // Note: Can't use confirm() dialog in sandboxed webview, so we just do it
+                    console.log('SVG Editor: Clearing reference layer, count before:', referenceLayer.length);
+                    referenceLayer = [];
+                    suppressReferenceLayer = true; // Prevent repopulation from file
+                    console.log('SVG Editor: Reference layer count after clear:', referenceLayer.length);
+
+                    // Tell extension to create new untitled document with just the lines
+                    vscode.postMessage({
+                        type: 'createUntitledFromLines',
+                        content: linesToSVG()
+                    });
+
+                    vscode.postMessage({
+                        type: 'clearReferenceLayer'
+                    });
+                    vscode.postMessage({
+                        type: 'saveSuppressReferenceLayer',
+                        suppressReferenceLayer: true
+                    });
+
+                    console.log('SVG Editor: About to redraw');
+                    redraw();
+                    console.log('SVG Editor: Redraw complete');
+                    hideContextMenu(); // Close menu
                     break;
 
                 case 'toggle-crosshair':
                     showCrosshair = !showCrosshair;
+                    // Save crosshair state to extension storage
+                    vscode.postMessage({
+                        type: 'saveCrosshairState',
+                        showCrosshair: showCrosshair
+                    });
                     redraw();
                     break;
             }
@@ -1626,6 +1661,12 @@ ${pathElements}</svg>`;
                 // Prevent circular updates while loading
                 isLoadingFromFile = true;
 
+                // Restore suppress reference layer flag
+                if (message.suppressReferenceLayer !== undefined) {
+                    suppressReferenceLayer = message.suppressReferenceLayer;
+                    console.log('SVG Editor: Restored suppress reference layer:', suppressReferenceLayer);
+                }
+
                 // If extension provided a saved reference layer, use it
                 // Otherwise parse the content and extract any filled paths to reference layer
                 if (message.referenceLayer && message.referenceLayer.length > 0) {
@@ -1636,15 +1677,30 @@ ${pathElements}</svg>`;
                     referenceLayer = [];
                 }
 
+                // Restore crosshair state if provided
+                if (message.showCrosshair !== undefined) {
+                    showCrosshair = message.showCrosshair;
+                    console.log('SVG Editor: Restored crosshair state:', showCrosshair);
+                }
+
+                // Restore background color if provided
+                if (message.backgroundColor !== undefined) {
+                    backgroundColor = message.backgroundColor;
+                    console.log('SVG Editor: Restored background color:', backgroundColor);
+                }
+
                 // Parse editable lines from SVG content
                 // Note: svgToLines will also populate referenceLayer if it finds filled paths
+                // UNLESS suppressReferenceLayer is true
                 lines = svgToLines(message.content);
 
-                // Save reference layer back to extension storage
-                vscode.postMessage({
-                    type: 'saveReferenceLayer',
-                    referenceLayer: referenceLayer
-                });
+                // Save reference layer back to extension storage (only if not suppressed)
+                if (!suppressReferenceLayer) {
+                    vscode.postMessage({
+                        type: 'saveReferenceLayer',
+                        referenceLayer: referenceLayer
+                    });
+                }
 
                 console.log('SVG Editor: Parsed', lines.length, 'editable lines and', referenceLayer.length, 'reference paths');
                 redraw();
