@@ -2,7 +2,12 @@
   "permissions": {
     "allow": [
       "Bash(npm install)",
-      "Bash(npm run compile:*)"
+      "Bash(npm run compile:*)",
+      "Bash(cat:*)",
+      "Bash(sed:*)",
+      "Bash(node -c:*)",
+      "Bash(node:*)",
+      "Bash(del \"C:\\source\\Nix\\Qed\\test_parser.html\" \"C:\\source\\Nix\\Qed\\debug_parse.js\")"
     ],
     "deny": [],
     "ask": []

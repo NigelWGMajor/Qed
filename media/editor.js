@@ -41,8 +41,8 @@
     let moveStartPos = null;
     let originalLineState = null;
 
-    // Undo state
-    let undoState = null;
+    // Undo state - stack of up to 10 previous states
+    let undoStack = [];
 
     // Context menu state
     let contextMenuLineIndex = null;
@@ -51,6 +51,11 @@
     // Default drawing properties
     let defaultThickness = 1;
     let defaultColor = '#808080'; // Mid grey
+
+    // Detect VSCode theme (dark vs light)
+    const isVSCodeDark = document.body.classList.contains('vscode-dark') ||
+                         document.body.classList.contains('vscode-high-contrast');
+    let backgroundColor = isVSCodeDark ? '#202020' : '#ffffff';
 
     // Alt key state for endpoint dragging
     let isAltPressed = false;
@@ -64,38 +69,38 @@
     let potentialCopyLineIndex = null; // Track which line might be copied if drag continues
 
     // Line structure: { start: {x, y}, end: {x, y}, curveControl: {x, y} | null, isArc: boolean, thickness: number, color: string }
+    // Path structure: { type: 'path', pathData: string, fill: string | null, stroke: string | null, strokeWidth: number, transform: {scaleX, scaleY, offsetX, offsetY} }
 
     function saveUndoState() {
-        undoState = JSON.parse(JSON.stringify(lines));
+        // Add current state to undo stack
+        undoStack.push(JSON.parse(JSON.stringify(lines)));
+        // Keep only last 10 states
+        if (undoStack.length > 10) {
+            undoStack.shift();
+        }
     }
 
     function performUndo() {
-        if (undoState !== null) {
-            lines = JSON.parse(JSON.stringify(undoState));
-            undoState = null;
+        if (undoStack.length > 0) {
+            lines = JSON.parse(JSON.stringify(undoStack.pop()));
             redraw();
             debouncedSave();
         }
     }
 
     function drawGrid() {
-        ctx.strokeStyle = '#e0e0e0';
-        ctx.lineWidth = 0.5;
+        // Draw dots at grid intersections
+        ctx.fillStyle = backgroundColor === '#ffffff' ? '#e0e0e0' : '#404040';
 
         for (let i = 0; i <= GRID_SIZE; i++) {
-            const pos = i * CELL_SIZE;
+            for (let j = 0; j <= GRID_SIZE; j++) {
+                const x = i * CELL_SIZE;
+                const y = j * CELL_SIZE;
 
-            // Vertical lines
-            ctx.beginPath();
-            ctx.moveTo(pos, 0);
-            ctx.lineTo(pos, CANVAS_SIZE);
-            ctx.stroke();
-
-            // Horizontal lines
-            ctx.beginPath();
-            ctx.moveTo(0, pos);
-            ctx.lineTo(CANVAS_SIZE, pos);
-            ctx.stroke();
+                ctx.beginPath();
+                ctx.arc(x, y, 1, 0, Math.PI * 2);
+                ctx.fill();
+            }
         }
     }
 
@@ -126,6 +131,13 @@
     }
 
     function drawLine(line) {
+        // Handle path objects (imported filled paths)
+        if (line.type === 'path') {
+            drawPath(line);
+            return;
+        }
+
+        // Handle regular line objects
         ctx.strokeStyle = line.color || '#000000';
         ctx.lineWidth = (line.thickness || 1) * CELL_SIZE;
         ctx.lineCap = 'round';
@@ -152,7 +164,61 @@
         }
     }
 
+    function drawPath(pathObj) {
+        // Draw a preserved SVG path (from imports)
+
+        // Apply transform if present
+        if (pathObj.transform) {
+            const t = pathObj.transform;
+            ctx.save();
+            // Apply translation first, then scale (transforms apply in reverse order for matrix multiplication)
+            ctx.translate(t.offsetX * CELL_SIZE, t.offsetY * CELL_SIZE);
+            ctx.scale(t.scaleX * CELL_SIZE, t.scaleY * CELL_SIZE);
+
+            // Create path AFTER setting up transforms
+            const path = new Path2D(pathObj.pathData);
+
+            // Draw fill
+            if (pathObj.fill && pathObj.fill !== 'none') {
+                ctx.fillStyle = pathObj.fill;
+                ctx.fill(path);
+            }
+
+            // Draw stroke
+            if (pathObj.stroke && pathObj.stroke !== 'none') {
+                ctx.strokeStyle = pathObj.stroke;
+                ctx.lineWidth = pathObj.strokeWidth || 1;
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                ctx.stroke(path);
+            }
+
+            ctx.restore();
+        } else {
+            // No transform - draw path as-is
+            const path = new Path2D(pathObj.pathData);
+
+            if (pathObj.fill && pathObj.fill !== 'none') {
+                ctx.fillStyle = pathObj.fill;
+                ctx.fill(path);
+            }
+
+            if (pathObj.stroke && pathObj.stroke !== 'none') {
+                ctx.strokeStyle = pathObj.stroke;
+                ctx.lineWidth = pathObj.strokeWidth || 1;
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                ctx.stroke(path);
+            }
+        }
+    }
+
     function drawCurveHandle(line, index) {
+        // Don't draw handles for path objects
+        if (line.type === 'path') {
+            return;
+        }
+
         if (!line.curveControl) {
             // Draw midpoint indicator
             const midX = (line.start.x + line.end.x) / 2;
@@ -203,20 +269,31 @@
     }
 
     function redraw() {
+        console.log('=== REDRAW START ===');
+        console.log('lines.length:', lines.length);
+        console.log('canvas.width:', canvas.width, 'canvas.height:', canvas.height);
+        console.log('ctx:', ctx);
+        console.log('backgroundColor:', backgroundColor);
+
         // Save the current transform
         ctx.save();
 
-        // Clear the entire canvas
+        // Clear and fill background
         ctx.setTransform(1, 0, 0, 1, 0, 0);
-        ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+        ctx.fillStyle = backgroundColor;
+        ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+        console.log('Background filled');
 
         // Apply zoom and pan transformations
         ctx.translate(panX, panY);
         ctx.scale(zoom, zoom);
+        console.log('Transforms applied, zoom:', zoom, 'pan:', panX, panY);
 
         drawGrid();
+        console.log('Grid drawn');
 
         lines.forEach((line, index) => {
+            console.log('Drawing item', index, 'type:', line.type || 'line');
             drawLine(line);
             drawCurveHandle(line, index);
         });
@@ -484,12 +561,27 @@
         let pathElements = '';
 
         lines.forEach(line => {
+            // Handle path objects (preserve as-is)
+            if (line.type === 'path') {
+                const fillAttr = line.fill ? ` fill="${line.fill}"` : '';
+                const strokeAttr = line.stroke ? ` stroke="${line.stroke}"` : '';
+                const strokeWidthAttr = line.strokeWidth ? ` stroke-width="${line.strokeWidth}"` : '';
+                pathElements += `  <path d="${line.pathData}"${fillAttr}${strokeAttr}${strokeWidthAttr}/>\n`;
+                return;
+            }
+
+            // Handle regular line objects
             const startX = line.start.x / CELL_SIZE;
             const startY = line.start.y / CELL_SIZE;
             const endX = line.end.x / CELL_SIZE;
             const endY = line.end.y / CELL_SIZE;
             const thickness = line.thickness || 1;
             const color = line.color || '#000000';
+
+            // Skip lines with invalid coordinates
+            if (!isFinite(startX) || !isFinite(startY) || !isFinite(endX) || !isFinite(endY)) {
+                return;
+            }
 
             let pathData = `M ${startX} ${startY} `;
 
@@ -501,34 +593,47 @@
                     Math.pow(line.start.y - center.y, 2)
                 ) / CELL_SIZE;
 
-                // Determine sweep direction
-                const startAngle = Math.atan2(line.start.y - center.y, line.start.x - center.x);
-                const endAngle = Math.atan2(line.end.y - center.y, line.end.x - center.x);
-                const midAngle = Math.atan2(line.curveControl.y - center.y, line.curveControl.x - center.x);
-
-                const normalizeAngle = (a) => {
-                    while (a < 0) { a += 2 * Math.PI; }
-                    while (a >= 2 * Math.PI) { a -= 2 * Math.PI; }
-                    return a;
-                };
-
-                const sa = normalizeAngle(startAngle);
-                const ma = normalizeAngle(midAngle);
-                const ea = normalizeAngle(endAngle);
-
-                let sweepFlag = 1;  // clockwise by default
-                if (sa < ea) {
-                    sweepFlag = (ma > sa && ma < ea) ? 1 : 0;
+                // Validate arc parameters
+                if (!isFinite(center.x) || !isFinite(center.y) || !isFinite(radius) || radius <= 0) {
+                    // Fall back to straight line if arc is invalid
+                    pathData += `L ${endX} ${endY}`;
                 } else {
-                    sweepFlag = (ma > sa || ma < ea) ? 1 : 0;
-                }
+                    // Determine sweep direction
+                    const startAngle = Math.atan2(line.start.y - center.y, line.start.x - center.x);
+                    const endAngle = Math.atan2(line.end.y - center.y, line.end.x - center.x);
+                    const midAngle = Math.atan2(line.curveControl.y - center.y, line.curveControl.x - center.x);
 
-                // SVG arc: A rx ry x-axis-rotation large-arc-flag sweep-flag x y
-                pathData += `A ${radius} ${radius} 0 0 ${sweepFlag} ${endX} ${endY}`;
+                    const normalizeAngle = (a) => {
+                        while (a < 0) { a += 2 * Math.PI; }
+                        while (a >= 2 * Math.PI) { a -= 2 * Math.PI; }
+                        return a;
+                    };
+
+                    const sa = normalizeAngle(startAngle);
+                    const ma = normalizeAngle(midAngle);
+                    const ea = normalizeAngle(endAngle);
+
+                    let sweepFlag = 1;  // clockwise by default
+                    if (sa < ea) {
+                        sweepFlag = (ma > sa && ma < ea) ? 1 : 0;
+                    } else {
+                        sweepFlag = (ma > sa || ma < ea) ? 1 : 0;
+                    }
+
+                    // SVG arc: A rx ry x-axis-rotation large-arc-flag sweep-flag x y
+                    pathData += `A ${radius} ${radius} 0 0 ${sweepFlag} ${endX} ${endY}`;
+                }
             } else if (line.curveControl) {
                 const ctrlX = line.curveControl.x / CELL_SIZE;
                 const ctrlY = line.curveControl.y / CELL_SIZE;
-                pathData += `Q ${ctrlX} ${ctrlY} ${endX} ${endY}`;
+
+                // Validate control point
+                if (!isFinite(ctrlX) || !isFinite(ctrlY)) {
+                    // Fall back to straight line if control point is invalid
+                    pathData += `L ${endX} ${endY}`;
+                } else {
+                    pathData += `Q ${ctrlX} ${ctrlY} ${endX} ${endY}`;
+                }
             } else {
                 pathData += `L ${endX} ${endY}`;
             }
@@ -549,6 +654,45 @@ ${pathElements}</svg>`;
 
         const parser = new DOMParser();
         const doc = parser.parseFromString(svgContent, 'image/svg+xml');
+
+        // Parse viewBox for coordinate transformation
+        const svgElement = doc.querySelector('svg');
+        let viewBox = { x: 0, y: 0, width: GRID_SIZE, height: GRID_SIZE };
+        let scaleX = 1;
+        let scaleY = 1;
+        let offsetX = 0;
+        let offsetY = 0;
+
+        if (svgElement && svgElement.hasAttribute('viewBox')) {
+            const vb = svgElement.getAttribute('viewBox').split(/[\s,]+/).map(parseFloat);
+            if (vb.length === 4 && vb.every(v => isFinite(v))) {
+                viewBox = { x: vb[0], y: vb[1], width: vb[2], height: vb[3] };
+                // Calculate transformation from viewBox to our canvas
+                scaleX = GRID_SIZE / viewBox.width;
+                scaleY = GRID_SIZE / viewBox.height;
+                offsetX = -viewBox.x * scaleX;
+                offsetY = -viewBox.y * scaleY;
+            }
+        }
+
+        // Transform a point from SVG coordinates to canvas coordinates
+        const transformPoint = (x, y) => {
+            return {
+                x: (x * scaleX + offsetX) * CELL_SIZE,
+                y: (y * scaleY + offsetY) * CELL_SIZE
+            };
+        };
+
+        // Inverse transform: from canvas coordinates back to SVG coordinates
+        const inverseTransformPoint = (px, py) => {
+            const gridX = px / CELL_SIZE;
+            const gridY = py / CELL_SIZE;
+            return {
+                x: (gridX - offsetX) / scaleX,
+                y: (gridY - offsetY) / scaleY
+            };
+        };
+
         const paths = doc.querySelectorAll('path');
 
         if (!paths || paths.length === 0) {
@@ -563,120 +707,258 @@ ${pathElements}</svg>`;
                 return;
             }
 
-            const stroke = path.getAttribute('stroke') || '#000000';
+            let fill = path.getAttribute('fill');
+            let stroke = path.getAttribute('stroke');
             const strokeWidth = parseFloat(path.getAttribute('stroke-width') || '1');
 
-            const commands = d.match(/[MLQA][^MLQA]*/g);
+            // Check if fill is inherited from parent SVG element
+            if (!fill && svgElement) {
+                fill = svgElement.getAttribute('fill');
+            }
+
+            // If path has a fill (not 'none'), preserve it as a complete path object
+            // Also check for closed paths with Z command (typically filled shapes)
+            const hasClosedPath = /[Zz]/.test(d);
+            if ((fill && fill !== 'none') || (hasClosedPath && !stroke)) {
+                parsedLines.push({
+                    type: 'path',
+                    pathData: d,
+                    fill: fill || '#000000',
+                    stroke: stroke,
+                    strokeWidth: strokeWidth,
+                    transform: { scaleX, scaleY, offsetX, offsetY }
+                });
+                console.log('SVG Editor: Preserved filled path with', d.match(/[MmZz]/g).length, 'subpaths');
+                return; // Skip line-by-line parsing for filled paths
+            }
+
+            // For stroked paths without fill, parse into editable line segments
+            const effectiveStroke = stroke || fill || '#000000';
+
+            // Match all SVG path commands (both uppercase and lowercase)
+            const commands = d.match(/[MmLlHhVvCcSsQqTtAaZz][^MmLlHhVvCcSsQqTtAaZz]*/g);
 
             if (!commands) {
+                console.warn('SVG Editor: No valid path commands found in path');
                 return;
             }
 
             let currentPoint = null;
+            let lastControlPoint = null; // For smooth curve commands (T/t, S/s)
 
             commands.forEach(cmd => {
             const type = cmd[0];
-            const coords = cmd.slice(1).trim().split(/[\s,]+/).map(parseFloat);
+            const coordsStr = cmd.slice(1).trim();
+            if (!coordsStr && type.toUpperCase() !== 'Z') {
+                return; // Skip empty commands except Z
+            }
 
-            if (type === 'M') {
-                currentPoint = {
-                    x: coords[0] * CELL_SIZE,
-                    y: coords[1] * CELL_SIZE
+            // Split coordinates - handle negative numbers that aren't space-separated
+            // e.g., "0-255.5-46.5" should become ["0", "-255.5", "-46.5"]
+            const coords = coordsStr ? coordsStr.match(/-?[0-9]*\.?[0-9]+/g).map(parseFloat) : [];
+
+            // Validate coordinates - skip malformed commands
+            if (coords.some(c => isNaN(c) || !isFinite(c))) {
+                console.warn(`SVG Editor: Skipping malformed ${type} command with invalid coordinates`);
+                return;
+            }
+
+            // Helper to convert relative coordinates to absolute
+            const isRelative = type === type.toLowerCase();
+            const getAbsoluteCoord = (relX, relY) => {
+                if (!currentPoint) return { x: relX, y: relY };
+                if (!isRelative) return { x: relX, y: relY };
+
+                // For relative coordinates, convert currentPoint back to SVG space, add offset, return
+                const currentSVG = inverseTransformPoint(currentPoint.x, currentPoint.y);
+                return {
+                    x: currentSVG.x + relX,
+                    y: currentSVG.y + relY
                 };
-            } else if (type === 'L' && currentPoint) {
+            };
+
+            const cmdType = type.toUpperCase();
+
+            if (cmdType === 'M') {
+                // Move command
+                const abs = getAbsoluteCoord(coords[0], coords[1]);
+                const transformed = transformPoint(abs.x, abs.y);
+                currentPoint = transformed;
+                lastControlPoint = null;
+            } else if (cmdType === 'L' && currentPoint) {
+                // Line command
+                const abs = getAbsoluteCoord(coords[0], coords[1]);
+                const transformed = transformPoint(abs.x, abs.y);
                 parsedLines.push({
                     start: { ...currentPoint },
-                    end: {
-                        x: coords[0] * CELL_SIZE,
-                        y: coords[1] * CELL_SIZE
-                    },
+                    end: transformed,
                     curveControl: null,
                     isArc: false,
                     thickness: strokeWidth,
-                    color: stroke
+                    color: effectiveStroke
                 });
-                currentPoint = {
-                    x: coords[0] * CELL_SIZE,
-                    y: coords[1] * CELL_SIZE
-                };
-            } else if (type === 'Q' && currentPoint) {
+                currentPoint = transformed;
+                lastControlPoint = null;
+            } else if (cmdType === 'H' && currentPoint) {
+                // Horizontal line
+                const currentSVG = inverseTransformPoint(currentPoint.x, currentPoint.y);
+                const abs = isRelative
+                    ? { x: currentSVG.x + coords[0], y: currentSVG.y }
+                    : { x: coords[0], y: currentSVG.y };
+                const transformed = transformPoint(abs.x, abs.y);
                 parsedLines.push({
                     start: { ...currentPoint },
-                    end: {
-                        x: coords[2] * CELL_SIZE,
-                        y: coords[3] * CELL_SIZE
-                    },
-                    curveControl: {
-                        x: coords[0] * CELL_SIZE,
-                        y: coords[1] * CELL_SIZE
-                    },
+                    end: transformed,
+                    curveControl: null,
                     isArc: false,
                     thickness: strokeWidth,
-                    color: stroke
+                    color: effectiveStroke
                 });
-                currentPoint = {
-                    x: coords[2] * CELL_SIZE,
-                    y: coords[3] * CELL_SIZE
-                };
-            } else if (type === 'A' && currentPoint) {
-                // Arc command: A rx ry x-axis-rotation large-arc-flag sweep-flag x y
-                const rx = coords[0] * CELL_SIZE;
-                const ry = coords[1] * CELL_SIZE;
-                const sweepFlag = coords[4];
-                const endX = coords[5] * CELL_SIZE;
-                const endY = coords[6] * CELL_SIZE;
-
-                // Calculate a point on the arc to use as control point
-                // Use the midpoint of the arc
-                const startX = currentPoint.x;
-                const startY = currentPoint.y;
-
-                // Calculate center of the circle
-                const dx = (endX - startX) / 2;
-                const dy = (endY - startY) / 2;
-                const midX = startX + dx;
-                const midY = startY + dy;
-
-                const distToMid = Math.sqrt(dx * dx + dy * dy);
-                const h = Math.sqrt(Math.max(0, rx * rx - distToMid * distToMid));
-
-                // Perpendicular direction
-                let cx, cy;
-                if (sweepFlag === 1) {
-                    cx = midX - h * dy / distToMid;
-                    cy = midY + h * dx / distToMid;
+                currentPoint = transformed;
+                lastControlPoint = null;
+            } else if (cmdType === 'V' && currentPoint) {
+                // Vertical line
+                const currentSVG = inverseTransformPoint(currentPoint.x, currentPoint.y);
+                const abs = isRelative
+                    ? { x: currentSVG.x, y: currentSVG.y + coords[0] }
+                    : { x: currentSVG.x, y: coords[0] };
+                const transformed = transformPoint(abs.x, abs.y);
+                parsedLines.push({
+                    start: { ...currentPoint },
+                    end: transformed,
+                    curveControl: null,
+                    isArc: false,
+                    thickness: strokeWidth,
+                    color: effectiveStroke
+                });
+                currentPoint = transformed;
+                lastControlPoint = null;
+            } else if (cmdType === 'Q' && currentPoint) {
+                // Quadratic Bezier curve
+                const absCtrl = getAbsoluteCoord(coords[0], coords[1]);
+                const absEnd = getAbsoluteCoord(coords[2], coords[3]);
+                const transformedCtrl = transformPoint(absCtrl.x, absCtrl.y);
+                const transformedEnd = transformPoint(absEnd.x, absEnd.y);
+                parsedLines.push({
+                    start: { ...currentPoint },
+                    end: transformedEnd,
+                    curveControl: transformedCtrl,
+                    isArc: false,
+                    thickness: strokeWidth,
+                    color: effectiveStroke
+                });
+                lastControlPoint = transformedCtrl;
+                currentPoint = transformedEnd;
+            } else if (cmdType === 'T' && currentPoint) {
+                // Smooth quadratic Bezier (uses reflection of last control point)
+                let controlPoint;
+                if (lastControlPoint) {
+                    // Reflect last control point across current point
+                    controlPoint = {
+                        x: 2 * currentPoint.x - lastControlPoint.x,
+                        y: 2 * currentPoint.y - lastControlPoint.y
+                    };
                 } else {
-                    cx = midX + h * dy / distToMid;
-                    cy = midY - h * dx / distToMid;
+                    // If no previous control point, use current point
+                    controlPoint = { ...currentPoint };
                 }
+                const absEnd = getAbsoluteCoord(coords[0], coords[1]);
+                const transformedEnd = transformPoint(absEnd.x, absEnd.y);
+                parsedLines.push({
+                    start: { ...currentPoint },
+                    end: transformedEnd,
+                    curveControl: controlPoint,
+                    isArc: false,
+                    thickness: strokeWidth,
+                    color: effectiveStroke
+                });
+                lastControlPoint = controlPoint;
+                currentPoint = transformedEnd;
+            } else if (cmdType === 'C' && currentPoint) {
+                // Cubic Bezier curve - approximate with quadratic
+                // C has 3 control points: cp1, cp2, end
+                // We'll use cp1 as our quadratic control point
+                const absCtrl1 = getAbsoluteCoord(coords[0], coords[1]);
+                const absEnd = getAbsoluteCoord(coords[4], coords[5]);
+                const transformedCtrl = transformPoint(absCtrl1.x, absCtrl1.y);
+                const transformedEnd = transformPoint(absEnd.x, absEnd.y);
+                parsedLines.push({
+                    start: { ...currentPoint },
+                    end: transformedEnd,
+                    curveControl: transformedCtrl,
+                    isArc: false,
+                    thickness: strokeWidth,
+                    color: effectiveStroke
+                });
+                // For smooth curves, remember the second control point
+                const absCtrl2 = getAbsoluteCoord(coords[2], coords[3]);
+                lastControlPoint = transformPoint(absCtrl2.x, absCtrl2.y);
+                currentPoint = transformedEnd;
+            } else if (cmdType === 'S' && currentPoint) {
+                // Smooth cubic Bezier - approximate with quadratic
+                let controlPoint1;
+                if (lastControlPoint) {
+                    // Reflect last control point across current point
+                    controlPoint1 = {
+                        x: 2 * currentPoint.x - lastControlPoint.x,
+                        y: 2 * currentPoint.y - lastControlPoint.y
+                    };
+                } else {
+                    controlPoint1 = { ...currentPoint };
+                }
+                const absEnd = getAbsoluteCoord(coords[2], coords[3]);
+                const transformedEnd = transformPoint(absEnd.x, absEnd.y);
+                parsedLines.push({
+                    start: { ...currentPoint },
+                    end: transformedEnd,
+                    curveControl: controlPoint1,
+                    isArc: false,
+                    thickness: strokeWidth,
+                    color: effectiveStroke
+                });
+                const absCtrl2 = getAbsoluteCoord(coords[0], coords[1]);
+                lastControlPoint = transformPoint(absCtrl2.x, absCtrl2.y);
+                currentPoint = transformedEnd;
+            } else if (cmdType === 'Z' && parsedLines.length > 0) {
+                // Close path - find the last M command's point
+                // For simplicity, we'll skip this as it would create a line back to start
+                lastControlPoint = null;
+            } else if (cmdType === 'A' && currentPoint) {
+                // Arc command: A rx ry x-axis-rotation large-arc-flag sweep-flag x y
+                // For simplicity, convert arc to a quadratic bezier approximation
+                const absEnd = getAbsoluteCoord(coords[5], coords[6]);
+                const transformedEnd = transformPoint(absEnd.x, absEnd.y);
 
-                // Find a point on the arc (perpendicular to start-end line, on the arc)
-                const angle = Math.atan2(startY - cy, startX - cx) +
-                              (sweepFlag === 1 ? -Math.PI / 2 : Math.PI / 2);
-                const arcPointX = cx + rx * Math.cos(angle);
-                const arcPointY = cy + ry * Math.sin(angle);
+                // Use midpoint as control point for simple approximation
+                const controlPoint = {
+                    x: (currentPoint.x + transformedEnd.x) / 2,
+                    y: (currentPoint.y + transformedEnd.y) / 2
+                };
 
                 parsedLines.push({
                     start: { ...currentPoint },
-                    end: {
-                        x: endX,
-                        y: endY
-                    },
-                    curveControl: {
-                        x: arcPointX,
-                        y: arcPointY
-                    },
-                    isArc: true,
+                    end: transformedEnd,
+                    curveControl: controlPoint,
+                    isArc: false,
                     thickness: strokeWidth,
-                    color: stroke
+                    color: effectiveStroke
                 });
-                currentPoint = {
-                    x: endX,
-                    y: endY
-                };
+                lastControlPoint = null;
+                currentPoint = transformedEnd;
+            } else {
+                // Unknown command - log warning
+                if (currentPoint) {
+                    console.warn(`SVG Editor: Unsupported command type '${type}'`);
+                }
             }
             });
         });
+
+        console.log(`SVG Editor: Parsed ${parsedLines.length} lines from ${paths.length} paths`);
+        if (parsedLines.length > 0) {
+            console.log('SVG Editor: First line:', parsedLines[0]);
+            console.log('SVG Editor: Last line:', parsedLines[parsedLines.length - 1]);
+        }
 
         return parsedLines;
     }
@@ -1132,6 +1414,11 @@ ${pathElements}</svg>`;
                 case 'color':
                     defaultColor = value;
                     break;
+
+                case 'toggle-background':
+                    backgroundColor = backgroundColor === '#ffffff' ? '#202020' : '#ffffff';
+                    redraw();
+                    break;
             }
         } else {
             // Operating on a specific line
@@ -1207,6 +1494,15 @@ ${pathElements}</svg>`;
 
     // Keyboard shortcuts
     document.addEventListener('keydown', (e) => {
+        // Escape key to abort current line drawing
+        if (e.key === 'Escape') {
+            if (currentLine) {
+                currentLine = null;
+                redraw();
+                e.preventDefault();
+            }
+        }
+
         // Track Alt key state
         if (e.key === 'Alt' && !isAltPressed) {
             isAltPressed = true;
@@ -1237,15 +1533,25 @@ ${pathElements}</svg>`;
 
         switch (message.type) {
             case 'update':
+                console.log('SVG Editor: Received update message, content length:', message.content.length);
                 // Prevent circular updates while loading
                 isLoadingFromFile = true;
                 lines = svgToLines(message.content);
+                console.log('SVG Editor: Parsed', lines.length, 'items (lines and/or paths)');
                 redraw();
                 updateSVGPreview();
                 // Reset flag after a delay
                 setTimeout(() => {
                     isLoadingFromFile = false;
                 }, 100);
+                break;
+
+            case 'redraw':
+                console.log('SVG Editor: Panel became visible, redrawing canvas');
+                // Force canvas to refresh its context when panel becomes visible
+                canvas.width = CANVAS_SIZE;
+                canvas.height = CANVAS_SIZE;
+                redraw();
                 break;
         }
     });

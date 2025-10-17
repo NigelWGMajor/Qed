@@ -47,6 +47,14 @@ export class SvgEditorProvider implements vscode.CustomTextEditorProvider {
             changeDocumentSubscription.dispose();
         });
 
+        // Handle panel visibility changes - reload content when panel becomes visible
+        webviewPanel.onDidChangeViewState(e => {
+            if (e.webviewPanel.visible) {
+                // Reload the content from the document to repopulate lines array
+                updateWebview();
+            }
+        });
+
         webviewPanel.webview.onDidReceiveMessage(async e => {
             switch (e.type) {
                 case 'save':
@@ -114,6 +122,8 @@ export class SvgEditorProvider implements vscode.CustomTextEditorProvider {
             <div class="color-swatch" data-action="color" data-value="#404040" style="background: #404040;" title="Dark Grey"></div>
             <div class="color-swatch" data-action="color" data-value="#FFFFFF" style="background: #FFFFFF; border: 1px solid #666;" title="White"></div>
         </div>
+        <div class="context-menu-separator"></div>
+        <div class="context-menu-item" data-action="toggle-background">Toggle Background (Light/Dark)</div>
     </div>
     <div id="svg-preview"></div>
     <script src="${scriptUri}"></script>
