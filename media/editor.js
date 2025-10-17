@@ -1758,6 +1758,54 @@ ${pathElements}</svg>`;
         }
     });
 
+    // Drag-and-drop support for SVG files
+    canvas.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        // Visual feedback - change cursor
+        canvas.style.cursor = 'copy';
+    });
+
+    canvas.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        canvas.style.cursor = 'crosshair';
+    });
+
+    canvas.addEventListener('drop', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        canvas.style.cursor = 'crosshair';
+
+        // Get dropped files
+        const files = e.dataTransfer.files;
+        if (files.length === 0) {
+            return;
+        }
+
+        const file = files[0];
+
+        // Check if it's an SVG file
+        if (!file.name.endsWith('.svg')) {
+            console.warn('SVG Editor: Dropped file is not an SVG');
+            return;
+        }
+
+        // Read the file content
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            const svgContent = event.target.result;
+            console.log('SVG Editor: Dropped SVG file, length:', svgContent.length);
+
+            // Send to the same handler as "Load Reference Layer"
+            vscode.postMessage({
+                type: 'loadReferenceContentDirect',
+                content: svgContent
+            });
+        };
+        reader.readAsText(file);
+    });
+
     // Handle messages from extension
     window.addEventListener('message', event => {
         const message = event.data;
@@ -1823,6 +1871,7 @@ ${pathElements}</svg>`;
                 break;
 
             case 'loadReferenceContent':
+            case 'loadReferenceContentDirect':
                 console.log('SVG Editor: Loading reference content, length:', message.content.length);
                 // Clear suppression flag since we're intentionally loading a reference
                 suppressReferenceLayer = false;

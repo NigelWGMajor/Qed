@@ -38,13 +38,24 @@ const vscode = __importStar(require("vscode"));
 class SvgEditorProvider {
     static register(context) {
         const provider = new SvgEditorProvider(context);
+        SvgEditorProvider.instance = provider;
         const providerRegistration = vscode.window.registerCustomEditorProvider(SvgEditorProvider.viewType, provider);
         return providerRegistration;
+    }
+    static getInstance() {
+        return SvgEditorProvider.instance;
     }
     constructor(context) {
         this.context = context;
     }
+    postMessageToActiveEditor(message) {
+        if (this.activePanel) {
+            this.activePanel.webview.postMessage(message);
+        }
+    }
     async resolveCustomTextEditor(document, webviewPanel, _token) {
+        // Track this as the active panel
+        this.activePanel = webviewPanel;
         webviewPanel.webview.options = {
             enableScripts: true,
         };

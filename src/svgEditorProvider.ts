@@ -1,8 +1,12 @@
 import * as vscode from 'vscode';
 
 export class SvgEditorProvider implements vscode.CustomTextEditorProvider {
+    private static instance: SvgEditorProvider;
+    private activePanel?: vscode.WebviewPanel;
+
     public static register(context: vscode.ExtensionContext): vscode.Disposable {
         const provider = new SvgEditorProvider(context);
+        SvgEditorProvider.instance = provider;
         const providerRegistration = vscode.window.registerCustomEditorProvider(
             SvgEditorProvider.viewType,
             provider
@@ -10,15 +14,28 @@ export class SvgEditorProvider implements vscode.CustomTextEditorProvider {
         return providerRegistration;
     }
 
+    public static getInstance(): SvgEditorProvider | undefined {
+        return SvgEditorProvider.instance;
+    }
+
     private static readonly viewType = 'svgGridEditor.editor';
 
     constructor(private readonly context: vscode.ExtensionContext) {}
+
+    public postMessageToActiveEditor(message: any) {
+        if (this.activePanel) {
+            this.activePanel.webview.postMessage(message);
+        }
+    }
 
     public async resolveCustomTextEditor(
         document: vscode.TextDocument,
         webviewPanel: vscode.WebviewPanel,
         _token: vscode.CancellationToken
     ): Promise<void> {
+        // Track this as the active panel
+        this.activePanel = webviewPanel;
+
         webviewPanel.webview.options = {
             enableScripts: true,
         };

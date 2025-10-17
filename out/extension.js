@@ -52,6 +52,27 @@ function activate(context) {
         // Open the file with the custom editor
         await vscode.commands.executeCommand('vscode.openWith', uri, 'svgGridEditor.editor');
     }));
+    // Register command to load SVG as reference layer in active editor
+    context.subscriptions.push(vscode.commands.registerCommand('svgGridEditor.loadAsReference', async (uri) => {
+        if (!uri) {
+            vscode.window.showErrorMessage('No SVG file selected');
+            return;
+        }
+        // Get the provider instance
+        const provider = svgEditorProvider_1.SvgEditorProvider.getInstance();
+        if (!provider) {
+            vscode.window.showErrorMessage('SVG Grid Editor provider not found');
+            return;
+        }
+        // Read the SVG file content
+        const fileContent = await vscode.workspace.fs.readFile(uri);
+        const svgContent = Buffer.from(fileContent).toString('utf8');
+        // Send the content to the active webview
+        provider.postMessageToActiveEditor({
+            type: 'loadReferenceContentDirect',
+            content: svgContent
+        });
+    }));
 }
 function deactivate() { }
 //# sourceMappingURL=extension.js.map

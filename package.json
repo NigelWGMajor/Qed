@@ -27,8 +27,15 @@
     "commands": [
       {
         "command": "svgGridEditor.openEditor",
-        "title": "Open with SVG Grid Editor",
-        "icon": "$(graph)"
+        "title": "Open SVG in Grid Editor",
+        "icon": {
+          "light": "./media/editor-icon.svg",
+          "dark": "./media/editor-icon.svg"
+        }
+      },
+      {
+        "command": "svgGridEditor.loadAsReference",
+        "title": "Load SVG as Reference Layer"
       }
     ],
     "menus": {
@@ -36,7 +43,12 @@
         {
           "command": "svgGridEditor.openEditor",
           "when": "resourceExtname == .svg",
-          "group": "navigation"
+          "group": "svgEditor@1"
+        },
+        {
+          "command": "svgGridEditor.loadAsReference",
+          "when": "resourceExtname == .svg",
+          "group": "svgEditor@2"
         }
       ],
       "editor/title": [
@@ -44,7 +56,10 @@
           "command": "svgGridEditor.openEditor",
           "when": "resourceExtname == .svg",
           "group": "navigation",
-          "icon": "$(graph)"
+          "icon": {
+            "light": "./media/editor-icon.svg",
+            "dark": "./media/editor-icon.svg"
+          }
         }
       ]
     }
