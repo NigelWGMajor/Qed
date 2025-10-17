@@ -23,7 +23,31 @@
         ],
         "priority": "option"
       }
-    ]
+    ],
+    "commands": [
+      {
+        "command": "svgGridEditor.openEditor",
+        "title": "Open with SVG Grid Editor",
+        "icon": "$(graph)"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "svgGridEditor.openEditor",
+          "when": "resourceExtname == .svg",
+          "group": "navigation"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "svgGridEditor.openEditor",
+          "when": "resourceExtname == .svg",
+          "group": "navigation",
+          "icon": "$(graph)"
+        }
+      ]
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",

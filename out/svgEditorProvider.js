@@ -127,9 +127,40 @@ class SvgEditorProvider {
                     // Create a new untitled document with just the drawn lines (no reference layer)
                     const newDocument = await vscode.workspace.openTextDocument({
                         content: e.content,
-                        language: 'xml'
+                        language: 'svg'
                     });
-                    await vscode.window.showTextDocument(newDocument);
+                    await vscode.window.showTextDocument(newDocument, { preview: false });
+                    return;
+                case 'createUntitledFromLinesAndClose':
+                    // Create a new untitled document with the drawn lines and close the original
+                    const untitledDoc = await vscode.workspace.openTextDocument({
+                        content: e.content,
+                        language: 'svg'
+                    });
+                    // Open the new untitled document with our custom editor
+                    await vscode.commands.executeCommand('vscode.openWith', untitledDoc.uri, 'svgGridEditor.editor');
+                    // Close the original reference file editor (this webview panel)
+                    webviewPanel.dispose();
+                    return;
+                case 'loadReferenceFile':
+                    // Open file picker for user to select SVG file
+                    const fileUri = await vscode.window.showOpenDialog({
+                        canSelectMany: false,
+                        filters: {
+                            svgFiles: ['svg']
+                        },
+                        openLabel: 'Load as Reference Layer'
+                    });
+                    if (fileUri && fileUri[0]) {
+                        // Read the file content
+                        const fileContent = await vscode.workspace.fs.readFile(fileUri[0]);
+                        const svgContent = Buffer.from(fileContent).toString('utf8');
+                        // Send content to webview
+                        webviewPanel.webview.postMessage({
+                            type: 'loadReferenceContent',
+                            content: svgContent
+                        });
+                    }
                     return;
             }
         });
@@ -182,6 +213,7 @@ class SvgEditorProvider {
         <div class="context-menu-item" data-action="toggle-background">Toggle Background (Light/Dark)</div>
         <div class="context-menu-separator" id="separator-reference"></div>
         <div class="context-menu-section-title" id="reference-title">Reference Layer</div>
+        <div class="context-menu-item" data-action="load-reference" id="load-reference-option">Load Reference Layer...</div>
         <div class="context-menu-item" data-action="toggle-reference" id="toggle-reference-option">Hide Reference Layer</div>
         <div class="context-menu-item" data-action="clear-reference" id="clear-reference-option">Clear Reference Layer</div>
         <div class="context-menu-separator"></div>
