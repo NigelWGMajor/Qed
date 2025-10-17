@@ -14,7 +14,8 @@
     canvas.height = CANVAS_SIZE;
 
     // Drawing state
-    let lines = [];
+    let lines = [];  // Editable lines (saved to file)
+    let referenceLayer = [];  // Imported path objects (not saved, reference only)
     let currentLine = null;
     let isDragging = false;
     let draggedCurveIndex = null;
@@ -56,6 +57,12 @@
     const isVSCodeDark = document.body.classList.contains('vscode-dark') ||
                          document.body.classList.contains('vscode-high-contrast');
     let backgroundColor = isVSCodeDark ? '#202020' : '#ffffff';
+
+    // Reference layer visibility
+    let isReferenceLayerVisible = true;
+
+    // Crosshair cursor lines
+    let showCrosshair = false;
 
     // Alt key state for endpoint dragging
     let isAltPressed = false;
@@ -269,12 +276,6 @@
     }
 
     function redraw() {
-        console.log('=== REDRAW START ===');
-        console.log('lines.length:', lines.length);
-        console.log('canvas.width:', canvas.width, 'canvas.height:', canvas.height);
-        console.log('ctx:', ctx);
-        console.log('backgroundColor:', backgroundColor);
-
         // Save the current transform
         ctx.save();
 
@@ -282,18 +283,22 @@
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.fillStyle = backgroundColor;
         ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
-        console.log('Background filled');
 
         // Apply zoom and pan transformations
         ctx.translate(panX, panY);
         ctx.scale(zoom, zoom);
-        console.log('Transforms applied, zoom:', zoom, 'pan:', panX, panY);
 
         drawGrid();
-        console.log('Grid drawn');
 
+        // Draw reference layer first (as underlay) if visible
+        if (isReferenceLayerVisible) {
+            referenceLayer.forEach((pathObj) => {
+                drawPath(pathObj);
+            });
+        }
+
+        // Draw editable lines on top
         lines.forEach((line, index) => {
-            console.log('Drawing item', index, 'type:', line.type || 'line');
             drawLine(line);
             drawCurveHandle(line, index);
         });
@@ -312,6 +317,28 @@
             ctx.beginPath();
             ctx.arc(line.end.x, line.end.y, 6, 0, Math.PI * 2);
             ctx.fill();
+        }
+
+        // Draw crosshair cursor lines if enabled
+        if (showCrosshair && lastMousePos) {
+            const crosshairColor = backgroundColor === '#ffffff' ? '#FF0000' : '#00FF00';
+            ctx.strokeStyle = crosshairColor;
+            ctx.lineWidth = 1 / zoom; // Keep line width constant regardless of zoom
+            ctx.setLineDash([5 / zoom, 5 / zoom]);
+
+            // Vertical line
+            ctx.beginPath();
+            ctx.moveTo(lastMousePos.x, 0);
+            ctx.lineTo(lastMousePos.x, CANVAS_SIZE);
+            ctx.stroke();
+
+            // Horizontal line
+            ctx.beginPath();
+            ctx.moveTo(0, lastMousePos.y);
+            ctx.lineTo(CANVAS_SIZE, lastMousePos.y);
+            ctx.stroke();
+
+            ctx.setLineDash([]);
         }
 
         // Restore the transform
@@ -392,6 +419,11 @@
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
 
+            // Skip path objects
+            if (line.type === 'path') {
+                continue;
+            }
+
             if (line.curveControl) {
                 if (isNearPoint(pos, line.curveControl)) {
                     return { lineIndex: i, point: 'control' };
@@ -412,6 +444,10 @@
         // When Alt is pressed and we have a locked line, only check that line's endpoints
         if (isAltPressed && hoveredLineIndex !== null && hoveredLineIndex < lines.length) {
             const line = lines[hoveredLineIndex];
+            // Skip path objects
+            if (line.type === 'path') {
+                return null;
+            }
             if (isNearPoint(pos, line.start)) {
                 return { lineIndex: hoveredLineIndex, type: 'start' };
             }
@@ -424,6 +460,10 @@
         // Check if cursor is near any line endpoint (when Alt is pressed)
         for (let i = lines.length - 1; i >= 0; i--) {
             const line = lines[i];
+            // Skip path objects
+            if (line.type === 'path') {
+                continue;
+            }
             if (isNearPoint(pos, line.start)) {
                 return { lineIndex: i, type: 'start' };
             }
@@ -438,6 +478,11 @@
         // Check lines in reverse order (top to bottom in rendering)
         for (let i = lines.length - 1; i >= 0; i--) {
             const line = lines[i];
+
+            // Skip path objects - they are visual underlays only
+            if (line.type === 'path') {
+                continue;
+            }
 
             if (line.curveControl && line.isArc) {
                 // Check arc
@@ -561,12 +606,9 @@
         let pathElements = '';
 
         lines.forEach(line => {
-            // Handle path objects (preserve as-is)
+            // Skip path objects - they should only be in referenceLayer, not saved to file
             if (line.type === 'path') {
-                const fillAttr = line.fill ? ` fill="${line.fill}"` : '';
-                const strokeAttr = line.stroke ? ` stroke="${line.stroke}"` : '';
-                const strokeWidthAttr = line.strokeWidth ? ` stroke-width="${line.strokeWidth}"` : '';
-                pathElements += `  <path d="${line.pathData}"${fillAttr}${strokeAttr}${strokeWidthAttr}/>\n`;
+                console.warn('SVG Editor: Found path object in lines array - should be in referenceLayer only');
                 return;
             }
 
@@ -720,7 +762,8 @@ ${pathElements}</svg>`;
             // Also check for closed paths with Z command (typically filled shapes)
             const hasClosedPath = /[Zz]/.test(d);
             if ((fill && fill !== 'none') || (hasClosedPath && !stroke)) {
-                parsedLines.push({
+                // Add to reference layer instead of parsedLines
+                referenceLayer.push({
                     type: 'path',
                     pathData: d,
                     fill: fill || '#000000',
@@ -728,7 +771,7 @@ ${pathElements}</svg>`;
                     strokeWidth: strokeWidth,
                     transform: { scaleX, scaleY, offsetX, offsetY }
                 });
-                console.log('SVG Editor: Preserved filled path with', d.match(/[MmZz]/g).length, 'subpaths');
+                console.log('SVG Editor: Preserved filled path to reference layer with', d.match(/[MmZz]/g).length, 'subpaths');
                 return; // Skip line-by-line parsing for filled paths
             }
 
@@ -1323,6 +1366,28 @@ ${pathElements}</svg>`;
         const separator1 = document.getElementById('separator-1');
         const defaultsTitle = document.getElementById('defaults-title');
         const thicknessValue = document.getElementById('thickness-value');
+        const toggleReferenceOption = document.getElementById('toggle-reference-option');
+        const clearReferenceOption = document.getElementById('clear-reference-option');
+        const toggleCrosshairOption = document.getElementById('toggle-crosshair-option');
+        const separatorReference = document.getElementById('separator-reference');
+        const referenceTitle = document.getElementById('reference-title');
+
+        // Update dynamic text labels
+        toggleReferenceOption.textContent = isReferenceLayerVisible ? 'Hide Reference Layer' : 'Show Reference Layer';
+        toggleCrosshairOption.textContent = showCrosshair ? 'Hide Crosshair' : 'Show Crosshair';
+
+        // Show/hide reference layer options based on whether we have a reference layer
+        if (referenceLayer.length > 0) {
+            separatorReference.style.display = 'block';
+            referenceTitle.style.display = 'block';
+            toggleReferenceOption.style.display = 'block';
+            clearReferenceOption.style.display = 'block';
+        } else {
+            separatorReference.style.display = 'none';
+            referenceTitle.style.display = 'none';
+            toggleReferenceOption.style.display = 'none';
+            clearReferenceOption.style.display = 'none';
+        }
 
         if (lineIndex === null) {
             // Right-clicked on blank canvas - show defaults menu
@@ -1419,6 +1484,26 @@ ${pathElements}</svg>`;
                     backgroundColor = backgroundColor === '#ffffff' ? '#202020' : '#ffffff';
                     redraw();
                     break;
+
+                case 'toggle-reference':
+                    isReferenceLayerVisible = !isReferenceLayerVisible;
+                    redraw();
+                    break;
+
+                case 'clear-reference':
+                    if (confirm('Clear the reference layer? This cannot be undone.')) {
+                        referenceLayer = [];
+                        vscode.postMessage({
+                            type: 'clearReferenceLayer'
+                        });
+                        redraw();
+                    }
+                    break;
+
+                case 'toggle-crosshair':
+                    showCrosshair = !showCrosshair;
+                    redraw();
+                    break;
             }
         } else {
             // Operating on a specific line
@@ -1486,10 +1571,14 @@ ${pathElements}</svg>`;
         }
     });
 
-    // Track mouse position for Alt key
+    // Track mouse position for Alt key and crosshair
     let lastMousePos = { x: 0, y: 0 };
     canvas.addEventListener('mousemove', (e) => {
         lastMousePos = getCanvasCoordinates(e);
+        // Redraw if crosshair is visible to update its position
+        if (showCrosshair) {
+            redraw();
+        }
     });
 
     // Keyboard shortcuts
@@ -1536,8 +1625,28 @@ ${pathElements}</svg>`;
                 console.log('SVG Editor: Received update message, content length:', message.content.length);
                 // Prevent circular updates while loading
                 isLoadingFromFile = true;
+
+                // If extension provided a saved reference layer, use it
+                // Otherwise parse the content and extract any filled paths to reference layer
+                if (message.referenceLayer && message.referenceLayer.length > 0) {
+                    referenceLayer = message.referenceLayer;
+                    console.log('SVG Editor: Loaded', referenceLayer.length, 'reference paths from storage');
+                } else {
+                    // Clear reference layer to parse fresh
+                    referenceLayer = [];
+                }
+
+                // Parse editable lines from SVG content
+                // Note: svgToLines will also populate referenceLayer if it finds filled paths
                 lines = svgToLines(message.content);
-                console.log('SVG Editor: Parsed', lines.length, 'items (lines and/or paths)');
+
+                // Save reference layer back to extension storage
+                vscode.postMessage({
+                    type: 'saveReferenceLayer',
+                    referenceLayer: referenceLayer
+                });
+
+                console.log('SVG Editor: Parsed', lines.length, 'editable lines and', referenceLayer.length, 'reference paths');
                 redraw();
                 updateSVGPreview();
                 // Reset flag after a delay

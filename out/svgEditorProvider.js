@@ -50,10 +50,16 @@ class SvgEditorProvider {
         };
         webviewPanel.webview.html = this.getHtmlForWebview(webviewPanel.webview);
         let isUpdatingFromWebview = false;
+        // Storage key for reference layer (per document)
+        const storageKey = `referenceLayer:${document.uri.toString()}`;
+        const context = this.context;
         function updateWebview() {
+            // Load reference layer from storage
+            const referenceLayer = context.workspaceState.get(storageKey, []);
             webviewPanel.webview.postMessage({
                 type: 'update',
                 content: document.getText(),
+                referenceLayer: referenceLayer,
             });
         }
         const changeDocumentSubscription = vscode.workspace.onDidChangeTextDocument(e => {
@@ -87,6 +93,14 @@ class SvgEditorProvider {
                             isUpdatingFromWebview = false;
                         }, 100);
                     }
+                    return;
+                case 'saveReferenceLayer':
+                    // Save reference layer to workspace state
+                    await context.workspaceState.update(storageKey, e.referenceLayer);
+                    return;
+                case 'clearReferenceLayer':
+                    // Clear reference layer from workspace state
+                    await context.workspaceState.update(storageKey, []);
                     return;
             }
         });
@@ -137,6 +151,12 @@ class SvgEditorProvider {
         </div>
         <div class="context-menu-separator"></div>
         <div class="context-menu-item" data-action="toggle-background">Toggle Background (Light/Dark)</div>
+        <div class="context-menu-separator" id="separator-reference"></div>
+        <div class="context-menu-section-title" id="reference-title">Reference Layer</div>
+        <div class="context-menu-item" data-action="toggle-reference" id="toggle-reference-option">Hide Reference Layer</div>
+        <div class="context-menu-item" data-action="clear-reference" id="clear-reference-option">Clear Reference Layer</div>
+        <div class="context-menu-separator"></div>
+        <div class="context-menu-item" data-action="toggle-crosshair" id="toggle-crosshair-option">Show Crosshair</div>
     </div>
     <div id="svg-preview"></div>
     <script src="${scriptUri}"></script>
