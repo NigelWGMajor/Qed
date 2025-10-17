@@ -295,9 +295,17 @@
 
         // Draw reference layer first (as underlay) if visible
         if (isReferenceLayerVisible) {
-            referenceLayer.forEach((pathObj) => {
-                drawPath(pathObj);
+            ctx.save();
+            ctx.globalAlpha = 0.5; // All reference layer items are semi-transparent
+            referenceLayer.forEach((item) => {
+                if (item.type === 'path') {
+                    drawPath(item);
+                } else {
+                    // Regular line object in reference layer
+                    drawLine(item);
+                }
             });
+            ctx.restore();
         }
 
         // Draw editable lines on top
@@ -609,9 +617,30 @@
         let pathElements = '';
 
         lines.forEach(line => {
-            // Skip path objects - they should only be in referenceLayer, not saved to file
+            // Handle path objects (filled paths from merged reference layer)
             if (line.type === 'path') {
-                console.warn('SVG Editor: Found path object in lines array - should be in referenceLayer only');
+                const fillAttr = (line.fill && line.fill !== 'none') ? ` fill="${line.fill}"` : ' fill="none"';
+                const strokeAttr = (line.stroke && line.stroke !== 'none') ? ` stroke="${line.stroke}"` : '';
+                const strokeWidthAttr = line.strokeWidth ? ` stroke-width="${line.strokeWidth}"` : '';
+
+                // If path has a transform, we need to apply it in the SVG
+                // The transform converts from original SVG space to our grid space
+                if (line.transform) {
+                    const t = line.transform;
+                    // Create SVG transform: translate then scale
+                    // Note: scaleX/scaleY are already in grid units (CELL_SIZE multiplied in)
+                    // so we need to divide by CELL_SIZE to get back to viewBox units
+                    const scaleX = t.scaleX;
+                    const scaleY = t.scaleY;
+                    const translateX = t.offsetX;
+                    const translateY = t.offsetY;
+
+                    const transformAttr = ` transform="translate(${translateX} ${translateY}) scale(${scaleX} ${scaleY})"`;
+                    pathElements += `  <path d="${line.pathData}"${fillAttr}${strokeAttr}${strokeWidthAttr}${transformAttr}/>\n`;
+                } else {
+                    // No transform, export as-is
+                    pathElements += `  <path d="${line.pathData}"${fillAttr}${strokeAttr}${strokeWidthAttr}/>\n`;
+                }
                 return;
             }
 
@@ -755,6 +784,7 @@ ${pathElements}</svg>`;
             let fill = path.getAttribute('fill');
             let stroke = path.getAttribute('stroke');
             const strokeWidth = parseFloat(path.getAttribute('stroke-width') || '1');
+            const transformAttr = path.getAttribute('transform');
 
             // Check if fill is inherited from parent SVG element
             if (!fill && svgElement) {
@@ -765,7 +795,41 @@ ${pathElements}</svg>`;
             // Also check for closed paths with Z command (typically filled shapes)
             const hasClosedPath = /[Zz]/.test(d);
             if ((fill && fill !== 'none') || (hasClosedPath && !stroke)) {
-                // Only add to reference layer if not suppressed
+                // Check if this is a merged path (has transform attribute)
+                // Merged paths should go to lines array, not reference layer
+                if (transformAttr) {
+                    // Parse transform attribute - it's in the format "translate(x y) scale(sx sy)"
+                    const translateMatch = transformAttr.match(/translate\(([^)]+)\)/);
+                    const scaleMatch = transformAttr.match(/scale\(([^)]+)\)/);
+
+                    let transformObj = { scaleX, scaleY, offsetX, offsetY }; // Default to viewBox transform
+
+                    if (translateMatch && scaleMatch) {
+                        const translateParts = translateMatch[1].trim().split(/\s+/).map(parseFloat);
+                        const scaleParts = scaleMatch[1].trim().split(/\s+/).map(parseFloat);
+
+                        transformObj = {
+                            scaleX: scaleParts[0],
+                            scaleY: scaleParts[1] || scaleParts[0],
+                            offsetX: translateParts[0],
+                            offsetY: translateParts[1] || translateParts[0]
+                        };
+                    }
+
+                    // This is a merged path - add it to lines array as editable
+                    parsedLines.push({
+                        type: 'path',
+                        pathData: d,
+                        fill: fill,
+                        stroke: stroke,
+                        strokeWidth: strokeWidth,
+                        transform: transformObj
+                    });
+                    console.log('SVG Editor: Loaded merged path to lines array');
+                    return;
+                }
+
+                // Regular filled path - add to reference layer if not suppressed
                 if (!suppressReferenceLayer) {
                     referenceLayer.push({
                         type: 'path',
@@ -1382,6 +1446,7 @@ ${pathElements}</svg>`;
         const thicknessValue = document.getElementById('thickness-value');
         const loadReferenceOption = document.getElementById('load-reference-option');
         const toggleReferenceOption = document.getElementById('toggle-reference-option');
+        const mergeReferenceOption = document.getElementById('merge-reference-option');
         const clearReferenceOption = document.getElementById('clear-reference-option');
         const toggleCrosshairOption = document.getElementById('toggle-crosshair-option');
         const separatorReference = document.getElementById('separator-reference');
@@ -1395,12 +1460,14 @@ ${pathElements}</svg>`;
         separatorReference.style.display = 'block';
         referenceTitle.style.display = 'block';
         if (referenceLayer.length > 0) {
-            loadReferenceOption.style.display = 'none';
+            loadReferenceOption.style.display = 'block'; // Always show load to allow adding more
             toggleReferenceOption.style.display = 'block';
+            mergeReferenceOption.style.display = 'block';
             clearReferenceOption.style.display = 'block';
         } else {
             loadReferenceOption.style.display = 'block';
             toggleReferenceOption.style.display = 'none';
+            mergeReferenceOption.style.display = 'none';
             clearReferenceOption.style.display = 'none';
         }
 
@@ -1515,6 +1582,25 @@ ${pathElements}</svg>`;
                 case 'toggle-reference':
                     isReferenceLayerVisible = !isReferenceLayerVisible;
                     redraw();
+                    break;
+
+                case 'merge-reference':
+                    // Convert reference layer to editable lines array
+                    saveUndoState();
+                    console.log('SVG Editor: Merging', referenceLayer.length, 'reference items to lines');
+                    // Add all reference layer items to lines array
+                    referenceLayer.forEach(item => {
+                        // Add item as-is to lines (both path objects and regular lines)
+                        lines.push(item);
+                    });
+                    // Clear reference layer
+                    referenceLayer = [];
+                    vscode.postMessage({
+                        type: 'clearReferenceLayer'
+                    });
+                    redraw();
+                    debouncedSave();
+                    console.log('SVG Editor: Merged to', lines.length, 'total lines');
                     break;
 
                 case 'clear-reference':
@@ -1742,8 +1828,22 @@ ${pathElements}</svg>`;
                 suppressReferenceLayer = false;
                 // Clear existing reference layer
                 referenceLayer = [];
-                // Parse the SVG content - filled paths will populate reference layer
-                svgToLines(message.content);
+                // Parse the SVG content - this returns editable lines AND populates referenceLayer with filled paths
+                const parsedLines = svgToLines(message.content);
+
+                // When explicitly loading a reference, ALL content goes to reference layer
+                parsedLines.forEach(line => {
+                    // All parsed content (both path objects and regular lines) go to reference layer
+                    if (line.type === 'path') {
+                        // Already a path object
+                        referenceLayer.push(line);
+                    } else {
+                        // Regular line - keep as-is but add to reference layer
+                        // We'll store it as a regular line object, not a path
+                        referenceLayer.push(line);
+                    }
+                });
+
                 // Save the reference layer
                 vscode.postMessage({
                     type: 'saveReferenceLayer',

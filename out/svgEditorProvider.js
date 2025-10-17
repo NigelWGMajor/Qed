@@ -215,6 +215,7 @@ class SvgEditorProvider {
         <div class="context-menu-section-title" id="reference-title">Reference Layer</div>
         <div class="context-menu-item" data-action="load-reference" id="load-reference-option">Load Reference Layer...</div>
         <div class="context-menu-item" data-action="toggle-reference" id="toggle-reference-option">Hide Reference Layer</div>
+        <div class="context-menu-item" data-action="merge-reference" id="merge-reference-option">Merge Reference to Lines</div>
         <div class="context-menu-item" data-action="clear-reference" id="clear-reference-option">Clear Reference Layer</div>
         <div class="context-menu-separator"></div>
         <div class="context-menu-item" data-action="toggle-crosshair" id="toggle-crosshair-option">Show Crosshair</div>
