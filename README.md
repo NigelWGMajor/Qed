@@ -1,4 +1,9 @@
 
+<!-- Extension Icon -->
+<p align="center">
+	<img src="media/editor-icon.png" alt="Quick SVG Editor Icon" width="64" height="64">
+</p>
+
 # Quick SVG Editor
 
 A simple VS Code extension for editing SVG files with a grid-based interface.
@@ -22,16 +27,16 @@ A simple VS Code extension for editing SVG files with a grid-based interface.
 5. Right-click lines for more options
 6. Use the context menu to export as SVG or PNG
 
-Draw:      Drag
-Move:      Shift-drag
-Copy:      Ctrl-drag
-Move Ends: Alt-drag
-Undo:      Ctrl-z
-Bezier:    Drag Dot
-Arc:       Ctrl-drag Dot
-Reset:     Double-click Dot
-Zoom:      Wheel (Press To Pan)
-Save:      sCtrl-s
+- Draw:      Drag
+- Move:      Shift-drag
+- Copy:      Ctrl-drag
+- Move Ends: Alt-drag
+- Undo:      Ctrl-z
+- Bezier:    Drag Dot
+- Arc:       Ctrl-drag Dot
+- Reset:     Double-click Dot
+- Zoom:      Wheel (Press To Pan)
+- Save:      sCtrl-s
 
 More in the context menu ...
 

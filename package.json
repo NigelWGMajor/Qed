@@ -1,6 +1,10 @@
 {
   "name": "svg-grid-editor",
   "publisher": "NigelWGMajor",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/NigelWGMajor/Qed"
+  },
   "displayName": "Quick SVG Editor",
   "description": "A grid-based SVG editor for VSCode",
   "version": "0.0.1",
