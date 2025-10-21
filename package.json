@@ -1,6 +1,7 @@
 {
   "name": "svg-grid-editor",
-  "displayName": "SVG Grid Editor",
+  "publisher": "NigelWGMajor",
+  "displayName": "Quick SVG Editor",
   "description": "A grid-based SVG editor for VSCode",
   "version": "0.0.1",
   "engines": {
@@ -15,7 +16,7 @@
     "customEditors": [
       {
         "viewType": "svgGridEditor.editor",
-        "displayName": "SVG Grid Editor",
+        "displayName": "Quick SVG Editor",
         "selector": [
           {
             "filenamePattern": "*.svg"
