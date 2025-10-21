@@ -17,9 +17,23 @@ A simple VS Code extension for editing SVG files with a grid-based interface.
 
 1. Open or create an `.svg` file in VS Code
 2. Right-click and select "Reopen Editor With..." → "Quick SVG Editor"
-3. Use the grid canvas to draw and edit
-4. Right-click lines for more options
-5. Use the context menu to export as SVG or PNG
+3. Or open from the icon in the top-right corner of the svg viewer
+4. Use the grid canvas to draw and edit
+5. Right-click lines for more options
+6. Use the context menu to export as SVG or PNG
+
+Draw:      Drag
+Move:      Shift-drag
+Copy:      Ctrl-drag
+Move Ends: Alt-drag
+Undo:      Ctrl-z
+Bezier:    Drag Dot
+Arc:       Ctrl-drag Dot
+Reset:     Double-click Dot
+Zoom:      Wheel (Press To Pan)
+Save:      sCtrl-s
+
+More in the context menu ...
 
 ## Development
 
