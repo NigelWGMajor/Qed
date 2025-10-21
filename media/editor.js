@@ -1,4 +1,51 @@
-(function() {
+// ...existing code...
+window.addEventListener('DOMContentLoaded', () => {
+    // ...existing code...
+    const contextMenu = document.getElementById('context-menu');
+
+    // Add Save as PNG and SVG to context menu
+    contextMenu.addEventListener('click', (e) => {
+        const target = e.target.closest('[data-action]');
+        if (!target) { return; }
+        const action = target.dataset.action;
+        if (action === 'save-as-png') {
+            hideContextMenu();
+            const resolutionInput = document.getElementById('png-resolution-input');
+            let resolution = 128;
+            if (resolutionInput && !isNaN(Number(resolutionInput.value)) && Number(resolutionInput.value) > 0) {
+                resolution = Number(resolutionInput.value);
+            }
+            const svg = linesToSVG();
+            const canvas = document.createElement('canvas');
+            canvas.width = resolution;
+            canvas.height = resolution;
+            const ctx = canvas.getContext('2d');
+            const img = new window.Image();
+            img.onload = function() {
+                ctx.clearRect(0, 0, resolution, resolution);
+                ctx.drawImage(img, 0, 0, resolution, resolution);
+                const pngDataUrl = canvas.toDataURL('image/png');
+                vscode.postMessage({
+                    type: 'saveAsPng',
+                    pngDataUrl,
+                    resolution
+                });
+            };
+            img.onerror = function() {
+                alert('Failed to render SVG to PNG.');
+            };
+            img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svg)));
+        }
+        if (action === 'save-as-svg') {
+            hideContextMenu();
+            const svg = linesToSVG();
+            vscode.postMessage({
+                type: 'saveAsSvg',
+                svg
+            });
+        }
+    });
+});
     const vscode = acquireVsCodeApi();
 
     const canvas = document.getElementById('grid-canvas');
@@ -1910,4 +1957,4 @@ ${pathElements}</svg>`;
 
     // Initial draw
     redraw();
-})();
+

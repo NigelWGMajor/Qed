@@ -102,6 +102,49 @@ class SvgEditorProvider {
         });
         webviewPanel.webview.onDidReceiveMessage(async (e) => {
             switch (e.type) {
+                case 'saveAsPng': {
+                    // e.pngDataUrl: PNG data URL from webview
+                    const pngDataUrl = e.pngDataUrl;
+                    const uri = await vscode.window.showSaveDialog({
+                        filters: { png: ['png'] },
+                        saveLabel: 'Save PNG'
+                    });
+                    if (!uri) {
+                        return;
+                    }
+                    try {
+                        // Decode base64 PNG data
+                        const base64 = pngDataUrl.replace(/^data:image\/png;base64,/, '');
+                        const buffer = Buffer.from(base64, 'base64');
+                        await vscode.workspace.fs.writeFile(uri, buffer);
+                        vscode.window.showInformationMessage(`PNG saved to ${uri.fsPath}`);
+                    }
+                    catch (err) {
+                        const msg = (err && typeof err === 'object' && 'message' in err) ? err.message : String(err);
+                        vscode.window.showErrorMessage('Failed to export PNG: ' + msg);
+                    }
+                    return;
+                }
+                case 'saveAsSvg': {
+                    // e.svg: SVG string
+                    const svgContent = e.svg;
+                    const uri = await vscode.window.showSaveDialog({
+                        filters: { svg: ['svg'] },
+                        saveLabel: 'Save SVG'
+                    });
+                    if (!uri) {
+                        return;
+                    }
+                    try {
+                        await vscode.workspace.fs.writeFile(uri, Buffer.from(svgContent, 'utf8'));
+                        vscode.window.showInformationMessage(`SVG saved to ${uri.fsPath}`);
+                    }
+                    catch (err) {
+                        const msg = (err && typeof err === 'object' && 'message' in err) ? err.message : String(err);
+                        vscode.window.showErrorMessage('Failed to export SVG: ' + msg);
+                    }
+                    return;
+                }
                 case 'save':
                     isUpdatingFromWebview = true;
                     try {
@@ -192,6 +235,7 @@ class SvgEditorProvider {
     <div id="canvas-container">
         <canvas id="grid-canvas"></canvas>
     </div>
+    <!-- Save as PNG and SVG options will be in the context menu -->
     <div id="context-menu" class="context-menu" style="display: none;">
         <div class="context-menu-item" data-action="delete" id="delete-option">Delete</div>
         <div class="context-menu-item" data-action="straighten" id="straighten-option" style="display: none;">Straighten</div>
@@ -229,7 +273,15 @@ class SvgEditorProvider {
         <div class="context-menu-item" data-action="merge-reference" id="merge-reference-option">Merge Reference to Lines</div>
         <div class="context-menu-item" data-action="clear-reference" id="clear-reference-option">Clear Reference Layer</div>
         <div class="context-menu-separator"></div>
-        <div class="context-menu-item" data-action="toggle-crosshair" id="toggle-crosshair-option">Show Crosshair</div>
+    <div class="context-menu-separator"></div>
+    <div class="context-menu-item" style="display: flex; align-items: center; gap: 8px; padding: 6px 16px;">
+        <span data-action="save-as-png" id="save-as-png-option" style="cursor:pointer;">Save as PNG</span>
+        <input type="number" id="png-resolution-input" min="1" value="128" style="width: 64px; font-size: 13px; border-radius: 4px; border: 1px solid #555; padding: 2px 6px; margin-left: 8px;" title="Resolution (px)">
+        <span style="font-size: 12px; color: #888;">px</span>
+    </div>
+    <div class="context-menu-item" data-action="save-as-svg" id="save-as-svg-option">Save as SVG...</div>
+    <div class="context-menu-separator"></div>
+    <div class="context-menu-item" data-action="toggle-crosshair" id="toggle-crosshair-option">Show Crosshair</div>
     </div>
     <div id="svg-preview"></div>
     <script src="${scriptUri}"></script>
