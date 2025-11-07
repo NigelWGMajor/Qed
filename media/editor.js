@@ -377,26 +377,49 @@ window.addEventListener('DOMContentLoaded', () => {
             ctx.fill();
         }
 
-        // Draw crosshair cursor lines if enabled
-        if (showCrosshair && lastMousePos) {
+        // Draw crosshair cursor lines if enabled (without red cross)
+        if (showCrosshair && lastSnapPos) {
             const crosshairColor = backgroundColor === '#ffffff' ? '#FF0000' : '#00FF00';
             ctx.strokeStyle = crosshairColor;
             ctx.lineWidth = 1 / zoom; // Keep line width constant regardless of zoom
             ctx.setLineDash([5 / zoom, 5 / zoom]);
 
-            // Vertical line
+            // Vertical line at snap position
             ctx.beginPath();
-            ctx.moveTo(lastMousePos.x, 0);
-            ctx.lineTo(lastMousePos.x, CANVAS_SIZE);
+            ctx.moveTo(lastSnapPos.x, 0);
+            ctx.lineTo(lastSnapPos.x, CANVAS_SIZE);
             ctx.stroke();
 
-            // Horizontal line
+            // Horizontal line at snap position
             ctx.beginPath();
-            ctx.moveTo(0, lastMousePos.y);
-            ctx.lineTo(CANVAS_SIZE, lastMousePos.y);
+            ctx.moveTo(0, lastSnapPos.y);
+            ctx.lineTo(CANVAS_SIZE, lastSnapPos.y);
             ctx.stroke();
 
             ctx.setLineDash([]);
+        }
+
+        // Draw red cross at snap position when crosshair is disabled and not actively drawing/dragging
+        if (lastSnapPos && !showCrosshair && !isDragging && !isMoving && !isCopying && !isDraggingEndpoint && !currentLine) {
+            ctx.globalAlpha = 0.6;
+            ctx.strokeStyle = '#FF0000';
+            ctx.lineWidth = 2 / zoom; // Keep line width constant regardless of zoom
+            ctx.setLineDash([]);
+
+            const crossSize = 8 / zoom; // Size of the cross in world coordinates
+
+            // Draw X shape
+            ctx.beginPath();
+            ctx.moveTo(lastSnapPos.x - crossSize, lastSnapPos.y - crossSize);
+            ctx.lineTo(lastSnapPos.x + crossSize, lastSnapPos.y + crossSize);
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(lastSnapPos.x + crossSize, lastSnapPos.y - crossSize);
+            ctx.lineTo(lastSnapPos.x - crossSize, lastSnapPos.y + crossSize);
+            ctx.stroke();
+
+            ctx.globalAlpha = 1.0; // Reset opacity
         }
 
         // Restore the transform
@@ -1319,14 +1342,20 @@ ${pathElements}</svg>`;
                 const dy = pos.y - moveStartPos.y;
 
                 const line = lines[movingLineIndex];
-                line.start.x = originalLineState.start.x + dx;
-                line.start.y = originalLineState.start.y + dy;
-                line.end.x = originalLineState.end.x + dx;
-                line.end.y = originalLineState.end.y + dy;
+
+                // Calculate new positions with snapping to grid
+                const newStart = snapToGrid(originalLineState.start.x + dx, originalLineState.start.y + dy);
+                const newEnd = snapToGrid(originalLineState.end.x + dx, originalLineState.end.y + dy);
+
+                line.start.x = newStart.x;
+                line.start.y = newStart.y;
+                line.end.x = newEnd.x;
+                line.end.y = newEnd.y;
 
                 if (line.curveControl) {
-                    line.curveControl.x = originalLineState.curveControl.x + dx;
-                    line.curveControl.y = originalLineState.curveControl.y + dy;
+                    const newControl = snapToGrid(originalLineState.curveControl.x + dx, originalLineState.curveControl.y + dy);
+                    line.curveControl.x = newControl.x;
+                    line.curveControl.y = newControl.y;
                 }
 
                 redraw();
@@ -1760,12 +1789,14 @@ ${pathElements}</svg>`;
         }
     });
 
-    // Track mouse position for Alt key and crosshair
+    // Track mouse position for Alt key, crosshair, and snap indicator
     let lastMousePos = { x: 0, y: 0 };
+    let lastSnapPos = { x: 0, y: 0 };
     canvas.addEventListener('mousemove', (e) => {
         lastMousePos = getCanvasCoordinates(e);
-        // Redraw if crosshair is visible to update its position
-        if (showCrosshair) {
+        lastSnapPos = snapToGrid(lastMousePos.x, lastMousePos.y);
+        // Redraw if crosshair is visible or to show snap indicator
+        if (showCrosshair || (!isDragging && !isMoving && !isCopying && !isDraggingEndpoint && !currentLine)) {
             redraw();
         }
     });

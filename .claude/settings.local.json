@@ -8,7 +8,8 @@
       "Bash(node -c:*)",
       "Bash(node:*)",
       "Bash(del \"C:\\source\\Nix\\Qed\\test_parser.html\" \"C:\\source\\Nix\\Qed\\debug_parse.js\")",
-      "Bash(npx vsce package)"
+      "Bash(npx vsce package)",
+      "Bash(del \"svg-grid-editor-0.0.2.vsix\")"
     ],
     "deny": [],
     "ask": []
