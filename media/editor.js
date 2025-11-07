@@ -802,9 +802,7 @@ window.addEventListener('DOMContentLoaded', () => {
         });
 
         const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${GRID_SIZE} ${GRID_SIZE}" width="${GRID_SIZE}" height="${GRID_SIZE}">
-  <g transform="translate(0,${GRID_SIZE}) scale(1,-1)">
-${pathElements}  </g>
-</svg>`;
+${pathElements}</svg>`;
 
         return svg;
     }
