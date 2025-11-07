@@ -223,11 +223,13 @@ export class SvgEditorProvider implements vscode.CustomTextEditorProvider {
 <body>
     <div id="canvas-container">
         <canvas id="grid-canvas"></canvas>
+        <div id="coordinate-display"></div>
     </div>
     <!-- Save as PNG and SVG options will be in the context menu -->
     <div id="context-menu" class="context-menu" style="display: none;">
         <div class="context-menu-item" data-action="delete" id="delete-option">Delete</div>
         <div class="context-menu-item" data-action="straighten" id="straighten-option" style="display: none;">Straighten</div>
+        <div class="context-menu-item" data-action="toggle-construction" id="toggle-construction-option" style="display: none;">Mark as Construction Line</div>
         <div class="context-menu-separator" id="separator-1"></div>
         <div class="context-menu-section-title" id="defaults-title" style="display: none;">Defaults for New Lines</div>
         <div class="thickness-controls">

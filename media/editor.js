@@ -51,6 +51,7 @@ window.addEventListener('DOMContentLoaded', () => {
     const canvas = document.getElementById('grid-canvas');
     const ctx = canvas.getContext('2d');
     const svgPreview = document.getElementById('svg-preview');
+    const coordinateDisplay = document.getElementById('coordinate-display');
 
     // Grid configuration
     const GRID_SIZE = 32;
@@ -195,8 +196,16 @@ window.addEventListener('DOMContentLoaded', () => {
         }
 
         // Handle regular line objects
-        ctx.strokeStyle = line.color || '#000000';
-        ctx.lineWidth = (line.thickness || 1) * CELL_SIZE;
+        // Construction lines are drawn as thin blue dotted lines
+        if (line.isConstructionLine) {
+            ctx.strokeStyle = '#4080FF';  // Light blue
+            ctx.lineWidth = 1;  // Fixed thin width
+            ctx.setLineDash([4, 4]);  // Dotted pattern
+        } else {
+            ctx.strokeStyle = line.color || '#000000';
+            ctx.lineWidth = (line.thickness || 1) * CELL_SIZE;
+            ctx.setLineDash([]);  // Solid line
+        }
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
 
@@ -219,6 +228,9 @@ window.addEventListener('DOMContentLoaded', () => {
 
             ctx.stroke();
         }
+
+        // Reset dash pattern after drawing
+        ctx.setLineDash([]);
     }
 
     function drawPath(pathObj) {
@@ -687,6 +699,10 @@ window.addEventListener('DOMContentLoaded', () => {
         let pathElements = '';
 
         lines.forEach(line => {
+            // Skip construction lines - they should not be exported
+            if (line.isConstructionLine) {
+                return;
+            }
             // Handle path objects (filled paths from merged reference layer)
             if (line.type === 'path') {
                 const fillAttr = (line.fill && line.fill !== 'none') ? ` fill="${line.fill}"` : ' fill="none"';
@@ -786,7 +802,9 @@ window.addEventListener('DOMContentLoaded', () => {
         });
 
         const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${GRID_SIZE} ${GRID_SIZE}" width="${GRID_SIZE}" height="${GRID_SIZE}">
-${pathElements}</svg>`;
+  <g transform="translate(0,${GRID_SIZE}) scale(1,-1)">
+${pathElements}  </g>
+</svg>`;
 
         return svg;
     }
@@ -1180,6 +1198,63 @@ ${pathElements}</svg>`;
         svgPreview.textContent = svg;
     }
 
+    function updateCoordinateDisplay() {
+        if (!lastSnapPos) {
+            coordinateDisplay.textContent = '';
+            return;
+        }
+
+        // Convert canvas coordinates to grid coordinates with center at (0, 0)
+        // Y polarity is reversed: positive y goes up, negative y goes down
+        const centerX = GRID_SIZE / 2;
+        const centerY = GRID_SIZE / 2;
+        const gridX = Math.round(lastSnapPos.x / CELL_SIZE) - centerX;
+        const gridY = -(Math.round(lastSnapPos.y / CELL_SIZE) - centerY);
+
+        let displayText = `(${gridX}, ${gridY})`;
+
+        // Add offset information for drag operations
+        if ((isMoving || isCopying) && moveStartPos && movingLineIndex !== null) {
+            const line = lines[movingLineIndex];
+            const originalStart = originalLineState.start;
+
+            // Calculate offset from original position
+            const offsetX = Math.round(line.start.x / CELL_SIZE) - Math.round(originalStart.x / CELL_SIZE);
+            const offsetY = -(Math.round(line.start.y / CELL_SIZE) - Math.round(originalStart.y / CELL_SIZE));
+
+            if (offsetX !== 0 || offsetY !== 0) {
+                const offsetSign = (val) => val >= 0 ? '+' + val : val.toString();
+                displayText += ` ${offsetSign(offsetX)},${offsetSign(offsetY)}`;
+            }
+        } else if (isDraggingEndpoint && draggedEndpointLineIndex !== null && originalLineState) {
+            // Show offset for endpoint dragging
+            const line = lines[draggedEndpointLineIndex];
+            const originalPoint = draggedEndpointType === 'start' ? originalLineState.start : originalLineState.end;
+            const currentPoint = draggedEndpointType === 'start' ? line.start : line.end;
+
+            const offsetX = Math.round(currentPoint.x / CELL_SIZE) - Math.round(originalPoint.x / CELL_SIZE);
+            const offsetY = -(Math.round(currentPoint.y / CELL_SIZE) - Math.round(originalPoint.y / CELL_SIZE));
+
+            if (offsetX !== 0 || offsetY !== 0) {
+                const offsetSign = (val) => val >= 0 ? '+' + val : val.toString();
+                displayText += ` ${offsetSign(offsetX)},${offsetSign(offsetY)}`;
+            }
+        } else if (currentLine && currentLine.start) {
+            // Show offset when drawing a new line
+            const startX = Math.round(currentLine.start.x / CELL_SIZE) - centerX;
+            const startY = -(Math.round(currentLine.start.y / CELL_SIZE) - centerY);
+            const offsetX = gridX - startX;
+            const offsetY = gridY - startY;
+
+            if (offsetX !== 0 || offsetY !== 0) {
+                const offsetSign = (val) => val >= 0 ? '+' + val : val.toString();
+                displayText += ` ${offsetSign(offsetX)},${offsetSign(offsetY)}`;
+            }
+        }
+
+        coordinateDisplay.textContent = displayText;
+    }
+
     // Event handlers
     canvas.addEventListener('mousedown', (e) => {
         // Handle middle button for panning and double-click reset
@@ -1222,6 +1297,8 @@ ${pathElements}</svg>`;
                     isDraggingEndpoint = true;
                     draggedEndpointLineIndex = endpoint.lineIndex;
                     draggedEndpointType = endpoint.type;
+                    // Save original state for offset calculation
+                    originalLineState = JSON.parse(JSON.stringify(lines[endpoint.lineIndex]));
                     document.addEventListener('mousemove', handleMouseMove);
                     document.addEventListener('mouseup', handleMouseUp);
                     return;
@@ -1384,6 +1461,8 @@ ${pathElements}</svg>`;
             isDraggingEndpoint = false;
             draggedEndpointLineIndex = null;
             draggedEndpointType = null;
+            originalLineState = null;
+            updateCoordinateDisplay();
             debouncedSave();
             document.removeEventListener('mousemove', handleMouseMove);
             document.removeEventListener('mouseup', handleMouseUp);
@@ -1394,6 +1473,7 @@ ${pathElements}</svg>`;
             moveStartPos = null;
             originalLineState = null;
             canvas.style.cursor = 'crosshair';
+            updateCoordinateDisplay();
             debouncedSave();
         } else if (isDragging) {
             isDragging = false;
@@ -1433,6 +1513,7 @@ ${pathElements}</svg>`;
             }
 
             currentLine = null;
+            updateCoordinateDisplay();
             redraw();
         }
     }
@@ -1517,6 +1598,7 @@ ${pathElements}</svg>`;
 
         const deleteOption = document.getElementById('delete-option');
         const straightenOption = document.getElementById('straighten-option');
+        const toggleConstructionOption = document.getElementById('toggle-construction-option');
         const separator1 = document.getElementById('separator-1');
         const defaultsTitle = document.getElementById('defaults-title');
         const thicknessValue = document.getElementById('thickness-value');
@@ -1551,6 +1633,7 @@ ${pathElements}</svg>`;
             // Right-clicked on blank canvas - show defaults menu
             deleteOption.style.display = 'none';
             straightenOption.style.display = 'none';
+            toggleConstructionOption.style.display = 'none';
             separator1.style.display = 'none';
             defaultsTitle.style.display = 'block';
 
@@ -1572,6 +1655,17 @@ ${pathElements}</svg>`;
                 straightenOption.style.display = 'block';
             } else {
                 straightenOption.style.display = 'none';
+            }
+
+            // Show/hide construction line toggle only for straight lines
+            if (line && !line.curveControl && line.type !== 'path') {
+                toggleConstructionOption.style.display = 'block';
+                // Update text based on current state
+                toggleConstructionOption.textContent = line.isConstructionLine
+                    ? 'Unmark as Construction Line'
+                    : 'Mark as Construction Line';
+            } else {
+                toggleConstructionOption.style.display = 'none';
             }
         }
     }
@@ -1740,6 +1834,14 @@ ${pathElements}</svg>`;
                     needsSave = true;
                     break;
 
+                case 'toggle-construction':
+                    // Only allow straight lines to be construction lines
+                    if (!line.curveControl) {
+                        line.isConstructionLine = !line.isConstructionLine;
+                        needsSave = true;
+                    }
+                    break;
+
                 case 'thickness-decrease':
                     line.thickness = (line.thickness || 1) / THICKNESS_MULTIPLIER;
                     shouldCloseMenu = false;
@@ -1795,6 +1897,8 @@ ${pathElements}</svg>`;
     canvas.addEventListener('mousemove', (e) => {
         lastMousePos = getCanvasCoordinates(e);
         lastSnapPos = snapToGrid(lastMousePos.x, lastMousePos.y);
+        // Update coordinate display
+        updateCoordinateDisplay();
         // Redraw if crosshair is visible or to show snap indicator
         if (showCrosshair || (!isDragging && !isMoving && !isCopying && !isDraggingEndpoint && !currentLine)) {
             redraw();

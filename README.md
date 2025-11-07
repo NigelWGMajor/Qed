@@ -39,6 +39,7 @@ A simple VS Code extension for editing SVG files with a grid-based interface.
 - Save:      sCtrl-s
 
 More in the context menu ...
+Note that constructiion lines do not save to png or svg
 
 ## Development
 
