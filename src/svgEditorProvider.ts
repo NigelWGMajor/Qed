@@ -264,6 +264,11 @@ export class SvgEditorProvider implements vscode.CustomTextEditorProvider {
         <div class="context-menu-item" data-action="merge-reference" id="merge-reference-option">Merge Reference to Lines</div>
         <div class="context-menu-item" data-action="clear-reference" id="clear-reference-option">Clear Reference Layer</div>
         <div class="context-menu-separator"></div>
+    <div class="context-menu-section-title">Grid Resolution</div>
+    <div class="context-menu-item" style="display: flex; align-items: center; gap: 8px; padding: 6px 16px;">
+        <span style="flex: 1;">Grid Size:</span>
+        <input type="number" id="grid-size-input" min="8" max="1024" step="8" value="32" style="width: 64px; font-size: 13px; border-radius: 4px; border: 1px solid #555; padding: 2px 6px;" title="Grid resolution (8-1024)">
+    </div>
     <div class="context-menu-separator"></div>
     <div class="context-menu-item" style="display: flex; align-items: center; gap: 8px; padding: 6px 16px;">
         <span data-action="save-as-png" id="save-as-png-option" style="cursor:pointer;">Save as PNG</span>

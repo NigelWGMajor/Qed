@@ -54,9 +54,9 @@ window.addEventListener('DOMContentLoaded', () => {
     const coordinateDisplay = document.getElementById('coordinate-display');
 
     // Grid configuration
-    const GRID_SIZE = 32;
-    const CELL_SIZE = 16; // pixels per grid unit
-    const CANVAS_SIZE = GRID_SIZE * CELL_SIZE;
+    let GRID_SIZE = 32; // Variable grid resolution (default 32)
+    const CANVAS_SIZE = 512; // Fixed canvas size in pixels
+    let CELL_SIZE = CANVAS_SIZE / GRID_SIZE; // pixels per grid unit (derived)
 
     canvas.width = CANVAS_SIZE;
     canvas.height = CANVAS_SIZE;
@@ -805,6 +805,43 @@ window.addEventListener('DOMContentLoaded', () => {
 ${pathElements}</svg>`;
 
         return svg;
+    }
+
+    function resizeGrid(newGridSize) {
+        if (newGridSize < 8 || newGridSize > 1024) {
+            console.warn('Grid size must be between 8 and 1024');
+            return;
+        }
+
+        // Calculate scale factor for thickness adjustment
+        const scaleFactor = newGridSize / GRID_SIZE;
+
+        // Scale line thicknesses to maintain visual appearance
+        lines.forEach(line => {
+            if (line.thickness) {
+                line.thickness *= scaleFactor;
+            }
+        });
+
+        // Scale reference layer thicknesses as well
+        referenceLayer.forEach(item => {
+            if (item.thickness) {
+                item.thickness *= scaleFactor;
+            }
+        });
+
+        // Scale default thickness too
+        defaultThickness *= scaleFactor;
+
+        // Update grid size and recalculate cell size
+        // Canvas size stays fixed, so cell size adjusts
+        // Lines stay in the same pixel positions, just aligned to new grid
+        GRID_SIZE = newGridSize;
+        CELL_SIZE = CANVAS_SIZE / GRID_SIZE;
+
+        // Redraw and save
+        redraw();
+        debouncedSave();
     }
 
     function svgToLines(svgContent) {
@@ -1985,6 +2022,24 @@ ${pathElements}</svg>`;
         };
         reader.readAsText(file);
     });
+
+    // Grid size input handler
+    const gridSizeInput = document.getElementById('grid-size-input');
+    if (gridSizeInput) {
+        // Initialize with current grid size
+        gridSizeInput.value = GRID_SIZE;
+
+        // Handle changes
+        gridSizeInput.addEventListener('change', (e) => {
+            const newSize = parseInt(e.target.value);
+            if (!isNaN(newSize) && newSize >= 8 && newSize <= 1024) {
+                resizeGrid(newSize);
+            } else {
+                // Reset to current value if invalid
+                e.target.value = GRID_SIZE;
+            }
+        });
+    }
 
     // Handle messages from extension
     window.addEventListener('message', event => {
