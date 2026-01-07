@@ -26,6 +26,7 @@ A simple VS Code extension for editing SVG files with a grid-based interface.
 4. Use the grid canvas to draw and edit
 5. Right-click lines for more options
 6. Use the context menu to export as SVG or PNG
+7. Alt key with hover shows endpoints: hold alt to lock object when overlapping, drag to move endpoint.
 
 - Draw:      Drag
 - Move:      Shift-drag
@@ -36,7 +37,7 @@ A simple VS Code extension for editing SVG files with a grid-based interface.
 - Arc:       Ctrl-drag Dot
 - Reset:     Double-click Dot
 - Zoom:      Wheel (Press To Pan)
-- Save:      sCtrl-s
+- Save:      Ctrl-s
 
 More in the context menu ...
 Note that constructiion lines do not save to png or svg

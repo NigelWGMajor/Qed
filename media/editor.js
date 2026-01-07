@@ -121,6 +121,8 @@ window.addEventListener('DOMContentLoaded', () => {
     let isDraggingEndpoint = false;
     let draggedEndpointLineIndex = null;
     let draggedEndpointType = null; // 'start' or 'end'
+    let isAltLocked = false;
+    let lockedLineIndex = null;
 
     // Ctrl+click state for adding control points
     let ctrlClickStartPos = null;
@@ -1324,8 +1326,21 @@ ${pathElements}</svg>`;
             const pos = getCanvasCoordinates(e);
             const handle = findCurveHandleUnderCursor(pos);
 
-            // Check for Alt+click to drag endpoints
+            // Check for Alt+click to lock line and drag endpoints
             if (e.altKey && !e.shiftKey && !e.ctrlKey) {
+                let lineIndex = null;
+                if (isAltLocked && lockedLineIndex !== null) {
+                    lineIndex = lockedLineIndex;
+                    hoveredLineIndex = lockedLineIndex;
+                } else {
+                    lineIndex = findLineUnderCursor(pos);
+                    if (lineIndex !== null) {
+                        isAltLocked = true;
+                        lockedLineIndex = lineIndex;
+                        hoveredLineIndex = lineIndex;
+                    }
+                }
+
                 const endpoint = findEndpointUnderCursor(pos);
                 if (endpoint) {
                     saveUndoState();
@@ -1336,6 +1351,11 @@ ${pathElements}</svg>`;
                     originalLineState = JSON.parse(JSON.stringify(lines[endpoint.lineIndex]));
                     document.addEventListener('mousemove', handleMouseMove);
                     document.addEventListener('mouseup', handleMouseUp);
+                    return;
+                }
+
+                // Alt-click on a line locks focus; don't start a new line.
+                if (lineIndex !== null && !handle) {
                     return;
                 }
             }
@@ -1932,6 +1952,27 @@ ${pathElements}</svg>`;
     canvas.addEventListener('mousemove', (e) => {
         lastMousePos = getCanvasCoordinates(e);
         lastSnapPos = snapToGrid(lastMousePos.x, lastMousePos.y);
+        // Track Alt state here so endpoint handles appear even if keydown isn't captured.
+        if (e.altKey) {
+            if (!isAltPressed) {
+                isAltPressed = true;
+            }
+            if (!isDraggingEndpoint) {
+                if (isAltLocked && lockedLineIndex !== null) {
+                    hoveredLineIndex = lockedLineIndex;
+                } else {
+                    const newHoveredLineIndex = findLineUnderCursor(lastMousePos);
+                    if (newHoveredLineIndex !== hoveredLineIndex) {
+                        hoveredLineIndex = newHoveredLineIndex;
+                    }
+                }
+            }
+        } else if (isAltPressed && !isDraggingEndpoint) {
+            isAltPressed = false;
+            hoveredLineIndex = null;
+            isAltLocked = false;
+            lockedLineIndex = null;
+        }
         // Update coordinate display
         updateCoordinateDisplay();
         // Redraw if crosshair is visible or to show snap indicator
@@ -1955,7 +1996,11 @@ ${pathElements}</svg>`;
         if (e.key === 'Alt' && !isAltPressed) {
             isAltPressed = true;
             // Lock onto the line under the cursor when Alt is first pressed
-            hoveredLineIndex = findLineUnderCursor(lastMousePos);
+            if (isAltLocked && lockedLineIndex !== null) {
+                hoveredLineIndex = lockedLineIndex;
+            } else {
+                hoveredLineIndex = findLineUnderCursor(lastMousePos);
+            }
             redraw();
         }
 
@@ -1971,6 +2016,8 @@ ${pathElements}</svg>`;
         if (e.key === 'Alt') {
             isAltPressed = false;
             hoveredLineIndex = null;
+            isAltLocked = false;
+            lockedLineIndex = null;
             redraw();
         }
     });
@@ -2145,4 +2192,3 @@ ${pathElements}</svg>`;
 
     // Initial draw
     redraw();
-
